@@ -3,6 +3,7 @@ import express from 'express';
 import { config } from './config.js';
 import { pool } from './db/client.js';
 import { authRouter } from './routes/auth.js';
+import { adminPedidosRouter } from './routes/adminPedidos.js';
 import { entregasRouter } from './routes/entregas.js';
 import { gpsRouter } from './routes/gps.js';
 import { healthRouter } from './routes/health.js';
@@ -15,6 +16,7 @@ app.use(express.json({ limit: '2mb' }));
 
 app.use(healthRouter);
 app.use(authRouter);
+app.use(adminPedidosRouter);
 app.use(gpsRouter);
 app.use(pedidosCalleRouter);
 app.use(entregasRouter);

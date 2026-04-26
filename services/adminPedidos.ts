@@ -1,0 +1,88 @@
+import { API_ENABLED } from '@/constants/api';
+import { apiRequest } from './apiClient';
+import { useAdminPedidosStore } from '@/store/useAdminPedidosStore';
+import type { EstadoPedidoAdmin, PedidoAdmin, Usuario } from '@/types';
+
+interface ApiListResponse {
+  pedidos: Array<
+    Omit<PedidoAdmin, 'calles' | 'total' | 'creadoEn'> & {
+      calles: string[] | string;
+      total: number | string;
+      creado_en_ms?: number;
+      creadoEn?: number;
+    }
+  >;
+}
+
+function normalizePedido(p: ApiListResponse['pedidos'][number]): PedidoAdmin {
+  const calles = Array.isArray(p.calles)
+    ? p.calles.map(String)
+    : String(p.calles ?? '')
+        .split(',')
+        .map((x) => x.trim())
+        .filter(Boolean);
+  return {
+    ...p,
+    calles,
+    total: Number(p.total ?? 0),
+    creadoEn: Number(p.creadoEn ?? p.creado_en_ms ?? Date.now()),
+  };
+}
+
+export async function crearPedidoAdmin(payload: Omit<PedidoAdmin, 'id' | 'creadoEn'>): Promise<PedidoAdmin> {
+  const pedido: PedidoAdmin = {
+    ...payload,
+    id: `adm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    creadoEn: Date.now(),
+  };
+  if (API_ENABLED) {
+    await apiRequest('/admin-pedidos', {
+      method: 'POST',
+      body: JSON.stringify(pedido),
+    });
+  }
+  useAdminPedidosStore.getState().agregarPedido(pedido);
+  return pedido;
+}
+
+export async function actualizarEstadoPedidoAdmin(
+  id: string,
+  estado: EstadoPedidoAdmin
+): Promise<void> {
+  useAdminPedidosStore.getState().marcarEstado(id, estado);
+  if (!API_ENABLED) return;
+  await apiRequest(`/admin-pedidos/${id}/estado`, {
+    method: 'PATCH',
+    body: JSON.stringify({ estado }),
+  });
+}
+
+export async function obtenerRepartidoresDisponibles(): Promise<Usuario[]> {
+  if (!API_ENABLED) {
+    return [];
+  }
+  const data = await apiRequest<{ repartidores: Usuario[] }>('/repartidores');
+  return data.repartidores;
+}
+
+export function suscribirAdminPedidos(onChange: (list: PedidoAdmin[]) => void): () => void {
+  if (API_ENABLED) {
+    const load = async () => {
+      try {
+        const data = await apiRequest<ApiListResponse>('/admin-pedidos');
+        const list = data.pedidos.map(normalizePedido);
+        useAdminPedidosStore.getState().reemplazarPedidosDesdeRemoto(list);
+        onChange(list);
+      } catch (e) {
+        console.warn('suscribirAdminPedidos API:', e);
+      }
+    };
+    void load();
+    const interval = setInterval(() => {
+      void load();
+    }, 10000);
+    return () => clearInterval(interval);
+  }
+  onChange(useAdminPedidosStore.getState().pedidos);
+  return useAdminPedidosStore.subscribe((s) => onChange(s.pedidos));
+}

@@ -6,12 +6,15 @@ import { Screen } from '@/components/ui/Screen';
 import { Button } from '@/components/ui/Button';
 import { CLIENTES_DEMO_SEED } from '@/constants/demoData';
 import { useAppStore } from '@/store/useAppStore';
+import { useAdminPedidosStore } from '@/store/useAdminPedidosStore';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
 
 export default function AdminDashboard() {
   const { resetSesion } = useAppStore();
   const pedidos = usePedidosCalleStore((s) => s.pedidos);
+  const pedidosAdmin = useAdminPedidosStore((s) => s.pedidos);
   const pendientes = pedidos.filter((p) => p.estado === 'pendiente').length;
+  const adminActivos = pedidosAdmin.filter((p) => p.estado !== 'entregado' && p.estado !== 'cancelado').length;
 
   const cerrarSesion = async () => {
     await AsyncStorage.multiRemove(['jornada_id', 'repartidor_id']);
@@ -22,8 +25,12 @@ export default function AdminDashboard() {
   return (
     <Screen title="Panel de control" subtitle="Del Centro Pinturerias">
       <View style={styles.card}>
+        <Text style={styles.t}>Pedidos admin activos: {adminActivos}</Text>
+        <Text style={styles.s}>Crealos y asignalos desde la pestaña «Pedidos».</Text>
+      </View>
+      <View style={styles.card}>
         <Text style={styles.t}>Pedidos en calle pendientes: {pendientes}</Text>
-        <Text style={styles.s}>Revisá la pestaña «Pedidos» para detalle y estado.</Text>
+        <Text style={styles.s}>Pedidos levantados por repartidores durante la ruta.</Text>
       </View>
       <View style={styles.card}>
         <Text style={styles.t}>Clientes en catálogo demo: {CLIENTES_DEMO_SEED.length}</Text>

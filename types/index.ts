@@ -80,3 +80,32 @@ export interface Entrega {
   firmaBase64?: string;
   notasRepartidor?: string;
 }
+
+export interface PedidoAdminItem {
+  descripcion: string;
+  cantidad: number;
+  precioUnitario: number;
+  subtotal: number;
+}
+
+export type EstadoPedidoAdmin =
+  | 'pendiente'
+  | 'asignado'
+  | 'en_ruta'
+  | 'entregado'
+  | 'cancelado';
+
+export interface PedidoAdmin {
+  id: string;
+  titulo: string;
+  calles: string[];
+  repartidorId: string;
+  repartidorNombre: string;
+  items: PedidoAdminItem[];
+  total: number;
+  notas?: string;
+  estado: EstadoPedidoAdmin;
+  creadoEn: number;
+  creadoPorId?: string;
+  creadoPorNombre?: string;
+}

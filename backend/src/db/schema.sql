@@ -75,3 +75,30 @@ create table if not exists entregas (
   notas_repartidor text,
   created_at timestamptz not null default now()
 );
+
+create table if not exists pedidos_admin (
+  id text primary key,
+  titulo text not null,
+  calles jsonb not null default '[]'::jsonb,
+  repartidor_id text not null references repartidores(id),
+  repartidor_nombre text not null,
+  total numeric(12,2) not null default 0,
+  notas text,
+  estado text not null default 'pendiente',
+  creado_por_id text,
+  creado_por_nombre text,
+  creado_en_ms bigint not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_pedidos_admin_estado_created
+  on pedidos_admin (estado, creado_en_ms desc);
+
+create table if not exists pedidos_admin_items (
+  id uuid primary key default gen_random_uuid(),
+  pedido_id text not null references pedidos_admin(id) on delete cascade,
+  descripcion text not null,
+  cantidad integer not null,
+  precio_unitario numeric(12,2) not null,
+  subtotal numeric(12,2) not null
+);
