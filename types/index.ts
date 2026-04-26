@@ -1,0 +1,82 @@
+export type RolUsuario = 'repartidor' | 'admin';
+export type EstadoEntrega = 'pendiente' | 'en_camino' | 'entregado' | 'problema';
+
+export interface Usuario {
+  id: string;
+  nombre: string;
+  rol: RolUsuario;
+  telefono?: string;
+  activo: boolean;
+}
+
+export interface Coordenadas {
+  lat: number;
+  lng: number;
+}
+
+export interface TelefonoUbicacion {
+  id: string;
+  nombre: string;
+  posicion: Coordenadas;
+  actualizadoEn: number;
+  precision?: number;
+}
+
+export interface Cliente {
+  id: string;
+  nombre: string;
+  direccion: string;
+  telefono: string;
+  pedido: string;
+  coordenadas: Coordenadas;
+  estado: EstadoEntrega;
+  orden: number;
+  estimadoMin: number;
+  fotoEntregaUri?: string;
+  firmaBase64?: string;
+  notasRepartidor?: string;
+  tiempoParadaSegundos?: number;
+}
+
+/** Ítem de lista de precios importada desde Excel. */
+export interface ProductoLista {
+  codigo: string;
+  descripcion: string;
+  precioUnitario: number;
+}
+
+/** Línea de un pedido levantado en calle. */
+export interface LineaPedidoCalle {
+  codigo?: string;
+  descripcion: string;
+  cantidad: number;
+  precioUnitario: number;
+  subtotal: number;
+}
+
+export type EstadoPedidoCalle = 'pendiente' | 'visto' | 'armado';
+
+export interface PedidoCalle {
+  id: string;
+  calleNormalizada: string;
+  calleMostrada: string;
+  repartidorId: string;
+  repartidorNombre: string;
+  items: LineaPedidoCalle[];
+  total: number;
+  notas?: string;
+  clientesMismaCalle: { nombre: string; direccion: string }[];
+  estado: EstadoPedidoCalle;
+  creadoEn: number;
+}
+
+export interface Entrega {
+  clienteId: string;
+  estado: EstadoEntrega;
+  horaLlegada?: number;
+  horaEntrega?: number;
+  tiempoParadaSegundos?: number;
+  fotoUrl?: string;
+  firmaBase64?: string;
+  notasRepartidor?: string;
+}
