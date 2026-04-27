@@ -11,7 +11,14 @@ import { pedidosCalleRouter } from './routes/pedidosCalle.js';
 
 const app = express();
 
-app.use(cors({ origin: config.corsOrigin === '*' ? true : config.corsOrigin }));
+app.use(
+  cors({
+    origin: config.corsOrigin,
+    credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
 app.use(express.json({ limit: '2mb' }));
 
 app.use(healthRouter);
