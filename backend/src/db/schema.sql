@@ -5,6 +5,7 @@ create table if not exists repartidores (
   nombre text not null,
   rol text not null default 'repartidor',
   activo boolean not null default true,
+  pin text not null default '1234',
   created_at timestamptz not null default now()
 );
 

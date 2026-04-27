@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
 import {
   actualizarRepartidorAdmin,
-  crearRepartidorAdmin,
+  crearRepartidorAdminConPin,
+  eliminarRepartidorAdmin,
   listarRepartidoresAdmin,
 } from '@/services/adminRepartidores';
 import type { Usuario } from '@/types';
@@ -24,6 +25,7 @@ export default function RepartidoresAdminScreen() {
 
   const [usuario, setUsuario] = useState('');
   const [nombre, setNombre] = useState('');
+  const [pin, setPin] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const tituloForm = useMemo(
@@ -52,6 +54,7 @@ export default function RepartidoresAdminScreen() {
     setEditingId(null);
     setUsuario('');
     setNombre('');
+    setPin('');
   };
 
   const guardar = async () => {
@@ -65,15 +68,19 @@ export default function RepartidoresAdminScreen() {
       setError('Ingresá el usuario para crear el repartidor.');
       return;
     }
+    if (!/^\d{4}$/.test(pin.trim())) {
+      setError('Ingresá un PIN de 4 dígitos.');
+      return;
+    }
     try {
       setGuardando(true);
       setError(null);
       setOk(null);
       if (editingId) {
-        await actualizarRepartidorAdmin(editingId, { nombre: nombreLimpio });
-        setOk('Repartidor actualizado.');
+        await actualizarRepartidorAdmin(editingId, { nombre: nombreLimpio, pin: pin.trim() });
+        setOk('Repartidor actualizado (nombre y PIN).');
       } else {
-        await crearRepartidorAdmin(usuarioLimpio, nombreLimpio);
+        await crearRepartidorAdminConPin(usuarioLimpio, nombreLimpio, pin.trim());
         setOk('Repartidor creado.');
       }
       resetForm();
@@ -98,6 +105,36 @@ export default function RepartidoresAdminScreen() {
     } finally {
       setGuardando(false);
     }
+  };
+
+  const eliminar = (r: Usuario) => {
+    Alert.alert(
+      'Eliminar repartidor',
+      `¿Querés eliminar a ${r.nombre}? Si tiene historial, se desactivará en lugar de borrarse.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                setGuardando(true);
+                setError(null);
+                setOk(null);
+                const out = await eliminarRepartidorAdmin(r.id);
+                setOk(out.eliminado ? 'Repartidor eliminado.' : out.mensaje ?? 'Repartidor desactivado.');
+                await cargar();
+              } catch (e) {
+                setError(e instanceof Error ? e.message : 'No se pudo eliminar.');
+              } finally {
+                setGuardando(false);
+              }
+            })();
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -130,6 +167,16 @@ export default function RepartidoresAdminScreen() {
           placeholder="Ej: Carlos"
           value={nombre}
           onChangeText={setNombre}
+        />
+        <Text style={styles.label}>PIN (4 dígitos)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="1234"
+          value={pin}
+          onChangeText={setPin}
+          keyboardType="number-pad"
+          maxLength={4}
+          secureTextEntry
         />
         <View style={styles.actions}>
           <Button
@@ -173,18 +220,24 @@ export default function RepartidoresAdminScreen() {
               <Text style={styles.detalle}>Estado: {item.activo ? 'Activo' : 'Inactivo'}</Text>
               <View style={styles.actions}>
                 <Button
-                  label="Editar nombre"
+                  label="Editar"
                   variant="secondary"
                   onPress={() => {
                     setEditingId(item.id);
                     setUsuario(usuarioDesdeId(item.id));
                     setNombre(item.nombre);
+                    setPin('');
                   }}
                 />
                 <Button
                   label={item.activo ? 'Desactivar' : 'Activar'}
                   variant={item.activo ? 'warning' : 'primary'}
                   onPress={() => void cambiarActivo(item)}
+                />
+                <Button
+                  label="Eliminar"
+                  variant="danger"
+                  onPress={() => eliminar(item)}
                 />
               </View>
             </View>

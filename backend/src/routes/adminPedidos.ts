@@ -4,6 +4,7 @@ import { requireAuth } from '../auth.js';
 import { pool } from '../db/client.js';
 
 type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' } };
+const DEMO_PIN = process.env.DEMO_PIN ?? '1234';
 
 const itemSchema = z.object({
   descripcion: z.string().min(1),
@@ -51,6 +52,7 @@ const crearRepartidorSchema = z.object({
     .min(2)
     .regex(/^[a-zA-Z0-9._-]+$/, 'Usuario inválido.'),
   nombre: z.string().trim().min(2),
+  pin: z.string().trim().regex(/^\d{4}$/, 'PIN inválido. Debe tener 4 dígitos.').optional(),
   activo: z.boolean().optional(),
 });
 
@@ -58,8 +60,9 @@ const editarRepartidorSchema = z
   .object({
     nombre: z.string().trim().min(2).optional(),
     activo: z.boolean().optional(),
+    pin: z.string().trim().regex(/^\d{4}$/, 'PIN inválido. Debe tener 4 dígitos.').optional(),
   })
-  .refine((x) => x.nombre !== undefined || x.activo !== undefined, {
+  .refine((x) => x.nombre !== undefined || x.activo !== undefined || x.pin !== undefined, {
     message: 'Debés enviar al menos un campo a actualizar.',
   });
 
@@ -73,7 +76,15 @@ function requireAdmin(req: ReqWithUser, res: { status: (n: number) => { json: (b
   return true;
 }
 
+async function ensurePinColumn(): Promise<void> {
+  await pool.query(`alter table repartidores add column if not exists pin text`);
+  await pool.query(`update repartidores set pin = $1 where pin is null or length(trim(pin)) = 0`, [
+    DEMO_PIN,
+  ]);
+}
+
 adminPedidosRouter.get('/repartidores', requireAuth, async (req, res) => {
+  await ensurePinColumn();
   const includeInactivos =
     String(req.query.includeInactivos ?? '').trim().toLowerCase() === '1' ||
     String(req.query.includeInactivos ?? '').trim().toLowerCase() === 'true';
@@ -89,6 +100,7 @@ adminPedidosRouter.get('/repartidores', requireAuth, async (req, res) => {
 
 adminPedidosRouter.post('/repartidores', requireAuth, async (req, res) => {
   if (!requireAdmin(req as ReqWithUser, res)) return;
+  await ensurePinColumn();
   const parsed = crearRepartidorSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Payload inválido.' });
@@ -97,28 +109,31 @@ adminPedidosRouter.post('/repartidores', requireAuth, async (req, res) => {
   const usuario = parsed.data.usuario.toLowerCase();
   const id = usuario.startsWith('usr-') ? usuario : `usr-${usuario}`;
   const nombre = parsed.data.nombre.trim();
+  const pin = parsed.data.pin?.trim() || DEMO_PIN;
   const activo = parsed.data.activo ?? true;
   await pool.query(
-    `insert into repartidores (id, nombre, rol, activo)
-     values ($1, $2, 'repartidor', $3)
+    `insert into repartidores (id, nombre, rol, activo, pin)
+     values ($1, $2, 'repartidor', $3, $4)
      on conflict (id) do update
        set nombre = excluded.nombre,
            activo = excluded.activo,
-           rol = 'repartidor'`,
-    [id, nombre, activo]
+           rol = 'repartidor',
+           pin = excluded.pin`,
+    [id, nombre, activo, pin]
   );
   res.json({ ok: true, repartidor: { id, nombre, rol: 'repartidor', activo } });
 });
 
 adminPedidosRouter.patch('/repartidores/:id', requireAuth, async (req, res) => {
   if (!requireAdmin(req as ReqWithUser, res)) return;
+  await ensurePinColumn();
   const parsed = editarRepartidorSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Payload inválido.' });
     return;
   }
   const current = await pool.query(
-    `select id, nombre, activo
+    `select id, nombre, activo, pin
      from repartidores
      where id = $1 and rol = 'repartidor'`,
     [req.params.id]
@@ -127,16 +142,49 @@ adminPedidosRouter.patch('/repartidores/:id', requireAuth, async (req, res) => {
     res.status(404).json({ error: 'Repartidor no encontrado.' });
     return;
   }
-  const prev = current.rows[0] as { id: string; nombre: string; activo: boolean };
+  const prev = current.rows[0] as { id: string; nombre: string; activo: boolean; pin: string | null };
   const nombre = parsed.data.nombre?.trim() ?? prev.nombre;
   const activo = parsed.data.activo ?? prev.activo;
+  const pin = parsed.data.pin?.trim() ?? prev.pin ?? DEMO_PIN;
   await pool.query(
     `update repartidores
-     set nombre = $2, activo = $3
+     set nombre = $2, activo = $3, pin = $4
      where id = $1 and rol = 'repartidor'`,
-    [req.params.id, nombre, activo]
+    [req.params.id, nombre, activo, pin]
   );
   res.json({ ok: true, repartidor: { id: req.params.id, nombre, rol: 'repartidor', activo } });
+});
+
+adminPedidosRouter.delete('/repartidores/:id', requireAuth, async (req, res) => {
+  if (!requireAdmin(req as ReqWithUser, res)) return;
+  const id = req.params.id;
+  const checks = await Promise.all([
+    pool.query(`select 1 from jornadas where repartidor_id = $1 limit 1`, [id]),
+    pool.query(`select 1 from pedidos_calle where repartidor_id = $1 limit 1`, [id]),
+    pool.query(`select 1 from pedidos_admin where repartidor_id = $1 limit 1`, [id]),
+    pool.query(`select 1 from entregas where repartidor_id = $1 limit 1`, [id]),
+  ]);
+  const tieneHistorial = checks.some((r) => r.rowCount > 0);
+  if (tieneHistorial) {
+    const up = await pool.query(
+      `update repartidores
+       set activo = false
+       where id = $1 and rol = 'repartidor'`,
+      [id]
+    );
+    if (up.rowCount === 0) {
+      res.status(404).json({ error: 'Repartidor no encontrado.' });
+      return;
+    }
+    res.json({ ok: true, eliminado: false, mensaje: 'Tiene historial y se desactivó en lugar de eliminarse.' });
+    return;
+  }
+  const del = await pool.query(`delete from repartidores where id = $1 and rol = 'repartidor'`, [id]);
+  if (del.rowCount === 0) {
+    res.status(404).json({ error: 'Repartidor no encontrado.' });
+    return;
+  }
+  res.json({ ok: true, eliminado: true });
 });
 
 adminPedidosRouter.get('/admin-pedidos', requireAuth, async (_req, res) => {

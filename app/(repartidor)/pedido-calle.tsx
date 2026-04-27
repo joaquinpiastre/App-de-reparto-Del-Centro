@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -11,6 +12,7 @@ import {
 
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
+import { API_ENABLED } from '@/constants/api';
 import { COLORS } from '@/constants/colors';
 import { direccionesMismaCalle, normalizarCalle } from '@/lib/direccion';
 import { parseListaPreciosDesdeUri } from '@/services/listaPreciosExcel';
@@ -39,6 +41,7 @@ export default function PedidoCalleScreen() {
   const [importando, setImportando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [syncCatalogo, setSyncCatalogo] = useState(false);
+  const [catalogoMsg, setCatalogoMsg] = useState('');
 
   const misPedidos = useMemo(() => {
     if (!usuario?.id) return [];
@@ -54,8 +57,17 @@ export default function PedidoCalleScreen() {
   }, []);
 
   useEffect(() => {
-    if (productos.length > 0) return;
-    void sincronizarCatalogo();
+    if (!API_ENABLED) {
+      setCatalogoMsg('Modo local: importá Excel manualmente en el teléfono.');
+      return;
+    }
+    if (productos.length === 0) {
+      void sincronizarCatalogo();
+    }
+    const timer = setInterval(() => {
+      void sincronizarCatalogo();
+    }, 15000);
+    return () => clearInterval(timer);
   }, [productos.length]);
 
   const filtrados = useMemo(() => {
@@ -68,6 +80,7 @@ export default function PedidoCalleScreen() {
       )
       .slice(0, 40);
   }, [productos, busqueda]);
+  const coincidencias = useMemo(() => filtrados.slice(0, 8), [filtrados]);
 
   const clientesMismaCalle = useMemo(() => {
     if (!calleRef.trim()) return [];
@@ -113,13 +126,15 @@ export default function PedidoCalleScreen() {
       setSyncCatalogo(true);
       const catalogo = await obtenerCatalogoProductos();
       if (!catalogo || catalogo.productos.length === 0) {
-        Alert.alert('Catálogo', 'No hay catálogo central disponible todavía.');
+        setCatalogoMsg('No hay catálogo central publicado todavía.');
         return;
       }
       setLista(catalogo.productos, catalogo.nombreArchivo ?? 'catalogo-central');
-      Alert.alert('Catálogo actualizado', `Se sincronizaron ${catalogo.productos.length} productos.`);
+      setCatalogoMsg(
+        `Catálogo central: ${catalogo.productos.length} productos (${catalogo.nombreArchivo ?? 'sin nombre'}).`
+      );
     } catch (e) {
-      Alert.alert('Catálogo', e instanceof Error ? e.message : 'No se pudo sincronizar el catálogo.');
+      setCatalogoMsg(e instanceof Error ? e.message : 'No se pudo sincronizar el catálogo.');
     } finally {
       setSyncCatalogo(false);
     }
@@ -209,6 +224,7 @@ export default function PedidoCalleScreen() {
       ) : (
         <Text style={styles.meta}>Todavía no cargaste precios.</Text>
       )}
+      {catalogoMsg ? <Text style={styles.metaStrong}>{catalogoMsg}</Text> : null}
 
       <Text style={styles.label}>Calle de referencia (para agrupar paradas)</Text>
       <TextInput
@@ -237,6 +253,29 @@ export default function PedidoCalleScreen() {
         value={busqueda}
         onChangeText={setBusqueda}
       />
+      {busqueda.trim().length > 0 ? (
+        <View style={styles.sugerenciasBox}>
+          {coincidencias.length === 0 ? (
+            <Text style={styles.meta}>Sin coincidencias.</Text>
+          ) : (
+            coincidencias.map((item) => (
+              <Pressable
+                key={`sug-${item.codigo}-${item.descripcion}`}
+                style={styles.sugerenciaRow}
+                onPress={() => {
+                  agregarProducto(item);
+                  setBusqueda('');
+                }}
+              >
+                <Text style={styles.prodTit}>{item.descripcion}</Text>
+                <Text style={styles.prodSub}>
+                  {item.codigo} · ${item.precioUnitario.toFixed(2)}
+                </Text>
+              </Pressable>
+            ))
+          )}
+        </View>
+      ) : null}
 
       <Text style={styles.label}>Cantidad para agregar</Text>
       <TextInput
@@ -322,19 +361,35 @@ export default function PedidoCalleScreen() {
 }
 
 const styles = StyleSheet.create({
-  help: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto, marginBottom: 8 },
-  meta: { fontFamily: 'Poppins_400Regular', color: COLORS.grisSecundario, marginVertical: 6 },
-  label: { fontFamily: 'Poppins_600SemiBold', color: COLORS.grisTexto, marginTop: 8 },
+  help: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto, marginBottom: 10, fontSize: 14, lineHeight: 20 },
+  meta: { fontFamily: 'Poppins_400Regular', color: COLORS.grisSecundario, marginVertical: 6, fontSize: 13 },
+  metaStrong: { fontFamily: 'Poppins_600SemiBold', color: COLORS.verdeOscuro, marginBottom: 8, fontSize: 13 },
+  label: { fontFamily: 'Poppins_700Bold', color: COLORS.grisTexto, marginTop: 10, fontSize: 14 },
   input: {
     borderWidth: 1,
     borderColor: '#dcdcdc',
     borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     fontFamily: 'Poppins_400Regular',
     backgroundColor: '#fff',
+    fontSize: 14,
   },
   multiline: { minHeight: 72, textAlignVertical: 'top' },
+  sugerenciasBox: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#dfe6dc',
+    borderRadius: 12,
+    marginTop: 6,
+    paddingVertical: 4,
+  },
+  sugerenciaRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
   calleBox: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -343,20 +398,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.verdePrincipal,
   },
-  calleTitle: { fontFamily: 'Poppins_700Bold', color: COLORS.verdeOscuro },
-  calleRow: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto },
-  lista: { maxHeight: 220, marginTop: 8 },
+  calleTitle: { fontFamily: 'Poppins_700Bold', color: COLORS.verdeOscuro, fontSize: 14 },
+  calleRow: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto, fontSize: 13 },
+  lista: { maxHeight: 260, marginTop: 8 },
   prodRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 8,
+    padding: 10,
     marginBottom: 6,
   },
-  prodTit: { fontFamily: 'Poppins_600SemiBold', color: COLORS.grisTexto },
+  prodTit: { fontFamily: 'Poppins_600SemiBold', color: COLORS.grisTexto, fontSize: 14 },
   prodSub: { fontFamily: 'Poppins_400Regular', color: COLORS.grisSecundario, fontSize: 12 },
-  linea: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto },
+  linea: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto, fontSize: 14 },
   total: { fontFamily: 'Poppins_800ExtraBold', fontSize: 18, color: COLORS.verdeOscuro, marginTop: 8 },
 });
