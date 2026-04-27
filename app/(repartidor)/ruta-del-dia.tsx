@@ -38,15 +38,28 @@ function abrirRutaOptimizadaGoogleMaps(paradas: string[], origen?: { lat: number
 }
 
 export default function RutaDelDia() {
-  const { clientesDelDia, clienteActualIndex, jornadaActiva, ultimaPosicion } = useAppStore();
+  const { clientesDelDia, clienteActualIndex, jornadaActiva, ultimaPosicion, usuario } = useAppStore();
   const pedidosAdmin = useAdminPedidosStore((s) => s.pedidos);
 
   useEffect(() => suscribirAdminPedidos(() => {}), []);
 
-  const pedidoActivo = useMemo<PedidoAdmin | null>(() => {
-    const activos = pedidosAdmin.filter((p) => p.estado === 'asignado' || p.estado === 'en_ruta');
-    return activos.length > 0 ? activos[0] : null;
-  }, [pedidosAdmin]);
+  const pedidosActivos = useMemo<PedidoAdmin[]>(() => {
+    return pedidosAdmin.filter(
+      (p) =>
+        p.repartidorId === usuario?.id && (p.estado === 'asignado' || p.estado === 'en_ruta')
+    );
+  }, [pedidosAdmin, usuario?.id]);
+
+  const paradasOptimizadas = useMemo<string[]>(() => {
+    const set = new Set<string>();
+    pedidosActivos.forEach((pedido) => {
+      pedido.calles.forEach((calle) => {
+        const key = calle.trim();
+        if (key) set.add(key);
+      });
+    });
+    return Array.from(set);
+  }, [pedidosActivos]);
 
   if (!jornadaActiva || clientesDelDia.length === 0) {
     return (
@@ -64,18 +77,18 @@ export default function RutaDelDia() {
   return (
     <Screen title="Mis entregas de hoy" subtitle="Ruta optimizada">
       <RutaTrazada clientes={clientesDelDia} destacarClienteId={actual?.id} />
-      {pedidoActivo ? (
+      {pedidosActivos.length > 0 ? (
         <View style={styles.pedidoBox}>
-          <Text style={styles.pedidoTitle}>Pedido asignado: {pedidoActivo.titulo}</Text>
-          <Text style={styles.detalle}>Calles/paradas a cubrir (orden optimizado en Google Maps):</Text>
-          {pedidoActivo.calles.map((c, i) => (
-            <Text key={`${pedidoActivo.id}-${c}-${i}`} style={styles.paradaItem}>
+          <Text style={styles.pedidoTitle}>Pedidos asignados: {pedidosActivos.length}</Text>
+          <Text style={styles.detalle}>Paradas totales (una ruta optimizada en Google Maps):</Text>
+          {paradasOptimizadas.map((c, i) => (
+            <Text key={`parada-${c}-${i}`} style={styles.paradaItem}>
               {i + 1}. {c}
             </Text>
           ))}
           <Button
             label="ABRIR RECORRIDO ÓPTIMO EN GOOGLE MAPS"
-            onPress={() => abrirRutaOptimizadaGoogleMaps(pedidoActivo.calles, ultimaPosicion)}
+            onPress={() => abrirRutaOptimizadaGoogleMaps(paradasOptimizadas, ultimaPosicion)}
           />
         </View>
       ) : null}
