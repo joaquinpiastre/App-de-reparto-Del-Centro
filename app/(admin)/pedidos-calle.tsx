@@ -138,23 +138,39 @@ export default function PedidosCalleAdmin() {
     try {
       setGuardando(true);
       setFeedback(null);
-      await crearPedidoAdmin({
-        titulo: titulo.trim(),
-        calles,
-        repartidorId: repartidor.id,
-        repartidorNombre: repartidor.nombre,
-        items,
-        total,
-        notas: notas.trim() || undefined,
-        estado: 'asignado',
-        creadoPorId: usuario?.id,
-        creadoPorNombre: usuario?.nombre,
-      });
-      setTitulo('');
-      setCallesRaw('');
-      setItems([]);
-      setNotas('');
-      avisar('Listo', 'Pedido creado y asignado al repartidor.', 'ok');
+      const resultados = await Promise.allSettled(
+        calles.map((calle) =>
+          crearPedidoAdmin({
+            titulo: titulo.trim(),
+            calles: [calle],
+            repartidorId: repartidor.id,
+            repartidorNombre: repartidor.nombre,
+            items,
+            total,
+            notas: notas.trim() || undefined,
+            estado: 'asignado',
+            creadoPorId: usuario?.id,
+            creadoPorNombre: usuario?.nombre,
+          })
+        )
+      );
+      const creados = resultados.filter((r) => r.status === 'fulfilled').length;
+      const fallidos = resultados.length - creados;
+      if (creados > 0) {
+        setTitulo('');
+        setCallesRaw('');
+        setItems([]);
+        setNotas('');
+      }
+      if (fallidos === 0) {
+        avisar('Listo', `Se crearon ${creados} pedidos (uno por calle).`, 'ok');
+      } else {
+        avisar(
+          'Creación parcial',
+          `Se crearon ${creados} pedidos y fallaron ${fallidos}. Revisá conexión/API.`,
+          'error'
+        );
+      }
     } catch (e) {
       avisar(
         'Error al crear pedido',
@@ -194,7 +210,7 @@ export default function PedidosCalleAdmin() {
           value={titulo}
           onChangeText={setTitulo}
         />
-        <Text style={styles.label}>Calles (separadas por coma)</Text>
+        <Text style={styles.label}>Calles (separadas por coma, se crea 1 pedido por calle)</Text>
         <TextInput
           style={styles.input}
           placeholder="Av. San Martín, Mitre, Yrigoyen"
