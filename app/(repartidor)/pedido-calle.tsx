@@ -1,5 +1,5 @@
 import * as DocumentPicker from 'expo-document-picker';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -14,9 +14,11 @@ import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
 import { direccionesMismaCalle, normalizarCalle } from '@/lib/direccion';
 import { parseListaPreciosDesdeUri } from '@/services/listaPreciosExcel';
-import { publicarPedidoCalle } from '@/services/pedidosCalle';
+import { obtenerCatalogoProductos } from '@/services/catalogoProductos';
+import { actualizarEstadoPedidoCalle, publicarPedidoCalle, suscribirPedidosCalle } from '@/services/pedidosCalle';
 import { useAppStore } from '@/store/useAppStore';
 import { useListaPreciosStore } from '@/store/useListaPreciosStore';
+import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
 import type { LineaPedidoCalle, ProductoLista } from '@/types';
 
 export default function PedidoCalleScreen() {
@@ -27,6 +29,7 @@ export default function PedidoCalleScreen() {
   const productos = useListaPreciosStore((s) => s.productos);
   const ultimoArchivo = useListaPreciosStore((s) => s.ultimoArchivo);
   const setLista = useListaPreciosStore((s) => s.setLista);
+  const pedidosCalle = usePedidosCalleStore((s) => s.pedidos);
 
   const [busqueda, setBusqueda] = useState('');
   const [calleRef, setCalleRef] = useState('');
@@ -35,6 +38,25 @@ export default function PedidoCalleScreen() {
   const [lineas, setLineas] = useState<LineaPedidoCalle[]>([]);
   const [importando, setImportando] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [syncCatalogo, setSyncCatalogo] = useState(false);
+
+  const misPedidos = useMemo(() => {
+    if (!usuario?.id) return [];
+    return pedidosCalle
+      .filter((p) => p.repartidorId === usuario.id)
+      .sort((a, b) => b.creadoEn - a.creadoEn)
+      .slice(0, 8);
+  }, [pedidosCalle, usuario?.id]);
+
+  useEffect(() => {
+    const unsubscribe = suscribirPedidosCalle(() => {});
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (productos.length > 0) return;
+    void sincronizarCatalogo();
+  }, [productos.length]);
 
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -83,6 +105,23 @@ export default function PedidoCalleScreen() {
       Alert.alert('Error', 'No se pudo leer el archivo. Probá otro Excel o exportá como .xlsx.');
     } finally {
       setImportando(false);
+    }
+  };
+
+  const sincronizarCatalogo = async () => {
+    try {
+      setSyncCatalogo(true);
+      const catalogo = await obtenerCatalogoProductos();
+      if (!catalogo || catalogo.productos.length === 0) {
+        Alert.alert('Catálogo', 'No hay catálogo central disponible todavía.');
+        return;
+      }
+      setLista(catalogo.productos, catalogo.nombreArchivo ?? 'catalogo-central');
+      Alert.alert('Catálogo actualizado', `Se sincronizaron ${catalogo.productos.length} productos.`);
+    } catch (e) {
+      Alert.alert('Catálogo', e instanceof Error ? e.message : 'No se pudo sincronizar el catálogo.');
+    } finally {
+      setSyncCatalogo(false);
     }
   };
 
@@ -157,6 +196,12 @@ export default function PedidoCalleScreen() {
         label={importando ? 'IMPORTANDO…' : 'IMPORTAR EXCEL DE PRECIOS'}
         loading={importando}
         onPress={() => void importarExcel()}
+        variant="secondary"
+      />
+      <Button
+        label={syncCatalogo ? 'SINCRONIZANDO…' : 'SINCRONIZAR CATÁLOGO CENTRAL'}
+        loading={syncCatalogo}
+        onPress={() => void sincronizarCatalogo()}
         variant="secondary"
       />
       {ultimoArchivo ? (
@@ -251,6 +296,27 @@ export default function PedidoCalleScreen() {
         loading={enviando}
         onPress={() => void enviarPedido()}
       />
+      <Text style={styles.label}>Mis pedidos al local</Text>
+      {misPedidos.length === 0 ? (
+        <Text style={styles.meta}>Todavía no enviaste pedidos.</Text>
+      ) : (
+        misPedidos.map((p) => (
+          <View key={p.id} style={styles.calleBox}>
+            <Text style={styles.calleTitle}>
+              {p.calleMostrada} · ${p.total.toFixed(2)}
+            </Text>
+            <Text style={styles.calleRow}>Estado: {p.estado}</Text>
+            {p.estado === 'armado' ? (
+              <View style={{ marginTop: 8 }}>
+                <Button
+                  label="MARCAR RETIRADO"
+                  onPress={() => void actualizarEstadoPedidoCalle(p.id, 'retirado')}
+                />
+              </View>
+            ) : null}
+          </View>
+        ))
+      )}
     </Screen>
   );
 }

@@ -54,7 +54,7 @@ export interface LineaPedidoCalle {
   subtotal: number;
 }
 
-export type EstadoPedidoCalle = 'pendiente' | 'visto' | 'armado';
+export type EstadoPedidoCalle = 'pendiente' | 'visto' | 'armado' | 'retirado' | 'cancelado';
 
 export interface PedidoCalle {
   id: string;

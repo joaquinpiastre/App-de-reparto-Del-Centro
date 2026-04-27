@@ -21,12 +21,12 @@ const pedidoSchema = z.object({
   total: z.number(),
   notas: z.string().optional(),
   clientesMismaCalle: z.array(z.object({ nombre: z.string(), direccion: z.string() })).default([]),
-  estado: z.enum(['pendiente', 'visto', 'armado']).default('pendiente'),
+  estado: z.enum(['pendiente', 'visto', 'armado', 'retirado', 'cancelado']).default('pendiente'),
   creadoEn: z.number().int().positive(),
 });
 
 const estadoSchema = z.object({
-  estado: z.enum(['pendiente', 'visto', 'armado']),
+  estado: z.enum(['pendiente', 'visto', 'armado', 'retirado', 'cancelado']),
 });
 
 export const pedidosCalleRouter = Router();

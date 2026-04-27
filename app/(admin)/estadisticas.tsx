@@ -1,34 +1,76 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Dimensions, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BarChart } from 'react-native-chart-kit';
 
+import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
-import { useHistorialStore } from '@/store/useHistorialStore';
+import { obtenerStatsAdmin, type AdminStatsResponse } from '@/services/adminReportes';
 
 const chartW = Dimensions.get('window').width - 48;
 
 export default function Estadisticas() {
-  const cierres = useHistorialStore((s) => s.cierres);
+  const [stats, setStats] = useState<AdminStatsResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const cargar = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await obtenerStatsAdmin();
+      setStats(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudieron cargar las estadísticas.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void cargar();
+  }, []);
 
   const { labels, entregas, minutos } = useMemo(() => {
-    const slice = cierres.slice(0, 6).reverse();
+    const series = stats?.series;
     return {
-      labels: slice.map((_, i) => `${i + 1}`),
-      entregas: slice.map((c) => c.completados),
-      minutos: slice.map((c) => c.minutosEnRuta),
+      labels: series?.labels ?? [],
+      entregas: series?.entregas ?? [],
+      minutos: series?.minutos ?? [],
     };
-  }, [cierres]);
+  }, [stats]);
 
   return (
-    <Screen title="Estadísticas" subtitle="Últimos cierres (demo local)">
+    <Screen title="Estadísticas" subtitle="Métricas reales desde backend">
       <ScrollView>
-        {cierres.length === 0 ? (
+        <View style={styles.topRow}>
+          <Button
+            label={loading ? 'ACTUALIZANDO…' : 'ACTUALIZAR'}
+            loading={loading}
+            variant="secondary"
+            onPress={() => void cargar()}
+          />
+        </View>
+        {error ? (
+          <View style={[styles.card, styles.errorCard]}>
+            <Text style={styles.text}>{error}</Text>
+          </View>
+        ) : null}
+        {!stats || stats.resumen.jornadas === 0 ? (
           <View style={styles.card}>
-            <Text style={styles.text}>Todavía no hay datos. Cerrá un turno en la app repartidor.</Text>
+            <Text style={styles.text}>Todavía no hay datos para mostrar.</Text>
           </View>
         ) : (
           <>
+            <View style={styles.card}>
+              <Text style={styles.h}>Resumen general</Text>
+              <Text style={styles.text}>Jornadas: {stats.resumen.jornadas}</Text>
+              <Text style={styles.text}>Entregas: {stats.resumen.entregas}</Text>
+              <Text style={styles.text}>Incidencias: {stats.resumen.incidencias}</Text>
+              <Text style={styles.text}>
+                Promedio minutos en ruta: {stats.resumen.promedioMinutosRuta}
+              </Text>
+            </View>
             <View style={styles.card}>
               <Text style={styles.h}>Entregas por cierre reciente</Text>
               <BarChart
@@ -73,6 +115,18 @@ export default function Estadisticas() {
                 style={styles.chart}
               />
             </View>
+            <View style={styles.card}>
+              <Text style={styles.h}>Top repartidores (entregas)</Text>
+              {stats.topRepartidores.length === 0 ? (
+                <Text style={styles.text}>Sin datos.</Text>
+              ) : (
+                stats.topRepartidores.map((r) => (
+                  <Text key={r.id} style={styles.text}>
+                    · {r.nombre}: {r.entregas}
+                  </Text>
+                ))
+              )}
+            </View>
           </>
         )}
       </ScrollView>
@@ -80,7 +134,9 @@ export default function Estadisticas() {
   );
 }
 const styles = StyleSheet.create({
+  topRow: { alignItems: 'flex-start', marginBottom: 8 },
   card: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12 },
+  errorCard: { borderWidth: 1, borderColor: '#e06a6a', backgroundColor: '#fff3f3' },
   text: { fontFamily: 'Poppins_600SemiBold' },
   h: { fontFamily: 'Poppins_700Bold', marginBottom: 8 },
   chart: { borderRadius: 12, marginVertical: 8 },

@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
 import { DEMO_REPARTIDOR_USER } from '@/constants/demoAuth';
+import { obtenerCatalogoProductos, reemplazarCatalogoProductos } from '@/services/catalogoProductos';
+import { parseListaPreciosDesdeUri } from '@/services/listaPreciosExcel';
 import {
+  actualizarEstadoPedidoCalle,
   crearPedidoAdmin,
   editarPedidoAdmin,
   eliminarPedidoAdmin,
@@ -13,9 +17,11 @@ import {
   asignarPedidoAdmin,
   suscribirAdminPedidos,
 } from '@/services/adminPedidos';
+import { suscribirPedidosCalle } from '@/services/pedidosCalle';
 import { useAppStore } from '@/store/useAppStore';
 import { useAdminPedidosStore } from '@/store/useAdminPedidosStore';
-import type { PedidoAdmin, PedidoAdminItem, Usuario } from '@/types';
+import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
+import type { PedidoAdmin, PedidoAdminItem, PedidoCalle, Usuario } from '@/types';
 
 function fmtFecha(ts: number) {
   try {
@@ -35,6 +41,7 @@ const REPARTIDOR_SIN_ASIGNAR_NOMBRE = 'Sin asignar';
 
 export default function PedidosCalleAdmin() {
   const lista = useAdminPedidosStore((s) => s.pedidos);
+  const pedidosCalle = usePedidosCalleStore((s) => s.pedidos);
   const usuario = useAppStore((s) => s.usuario);
   const [repartidores, setRepartidores] = useState<Usuario[]>([]);
 
@@ -49,6 +56,8 @@ export default function PedidosCalleAdmin() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [feedback, setFeedback] = useState<{ tipo: 'ok' | 'error'; msg: string } | null>(null);
+  const [catalogoMeta, setCatalogoMeta] = useState<{ nombreArchivo: string | null; updatedAt: string | null } | null>(null);
+  const [subiendoCatalogo, setSubiendoCatalogo] = useState(false);
 
   const avisar = (titulo: string, msg: string, tipo: 'ok' | 'error' = 'error') => {
     setFeedback({ tipo, msg });
@@ -62,6 +71,7 @@ export default function PedidosCalleAdmin() {
   };
 
   useEffect(() => suscribirAdminPedidos(() => {}), []);
+  useEffect(() => suscribirPedidosCalle(() => {}), []);
 
   useEffect(() => {
     let mounted = true;
@@ -94,6 +104,23 @@ export default function PedidosCalleAdmin() {
     () => lista.filter((x) => x.estado === 'pendiente').sort((a, b) => b.creadoEn - a.creadoEn),
     [lista]
   );
+  const pedidosCalleActivos = useMemo(
+    () =>
+      pedidosCalle
+        .filter((p) => p.estado !== 'retirado' && p.estado !== 'cancelado')
+        .sort((a, b) => b.creadoEn - a.creadoEn),
+    [pedidosCalle]
+  );
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const c = await obtenerCatalogoProductos();
+        if (!c) return;
+        setCatalogoMeta({ nombreArchivo: c.nombreArchivo, updatedAt: c.updatedAt });
+      } catch {}
+    })();
+  }, []);
 
   const agregarItem = () => {
     const n = Math.max(1, parseInt(cantidad, 10) || 1);
@@ -118,6 +145,42 @@ export default function PedidosCalleAdmin() {
     setDescripcion('');
     setPrecio('');
     setCantidad('1');
+  };
+
+  const importarYSubirCatalogo = async () => {
+    try {
+      setSubiendoCatalogo(true);
+      const res = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        type: [
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel',
+        ],
+      });
+      if (res.canceled || !res.assets?.[0]?.uri) return;
+      const asset = res.assets[0];
+      const listaExcel = await parseListaPreciosDesdeUri(asset.uri);
+      if (listaExcel.length === 0) {
+        avisar('Catálogo', 'El Excel no tiene productos válidos.');
+        return;
+      }
+      await reemplazarCatalogoProductos(listaExcel, asset.name ?? undefined);
+      setCatalogoMeta({ nombreArchivo: asset.name ?? 'excel', updatedAt: new Date().toISOString() });
+      avisar('Catálogo', `Se subieron ${listaExcel.length} productos al catálogo central.`, 'ok');
+    } catch (e) {
+      avisar('Catálogo', e instanceof Error ? e.message : 'No se pudo subir el catálogo.');
+    } finally {
+      setSubiendoCatalogo(false);
+    }
+  };
+
+  const cambiarEstadoPedidoCalle = async (pedido: PedidoCalle, estado: PedidoCalle['estado']) => {
+    try {
+      await actualizarEstadoPedidoCalle(pedido.id, estado);
+      avisar('Pedido calle', `Pedido ${estado}.`, 'ok');
+    } catch (e) {
+      avisar('Pedido calle', e instanceof Error ? e.message : 'No se pudo actualizar el estado.');
+    }
   };
 
   const guardarPedido = async () => {
@@ -278,6 +341,55 @@ export default function PedidosCalleAdmin() {
         </View>
       ) : null}
       <View style={styles.card}>
+        <Text style={styles.label}>Catálogo central de productos (Excel)</Text>
+        <Button
+          label={subiendoCatalogo ? 'SUBIENDO CATÁLOGO…' : 'IMPORTAR EXCEL Y PUBLICAR CATÁLOGO'}
+          loading={subiendoCatalogo}
+          onPress={() => void importarYSubirCatalogo()}
+          variant="secondary"
+        />
+        <Text style={styles.row}>
+          Archivo: {catalogoMeta?.nombreArchivo ?? 'Sin catálogo publicado'} · Actualizado:{' '}
+          {catalogoMeta?.updatedAt ? new Date(catalogoMeta.updatedAt).toLocaleString('es-AR') : '—'}
+        </Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.label}>Pedidos de calle (en preparación)</Text>
+        {pedidosCalleActivos.length === 0 ? (
+          <Text style={styles.empty}>No hay pedidos de calle activos.</Text>
+        ) : (
+          pedidosCalleActivos.map((p) => (
+            <View key={p.id} style={styles.cardMini}>
+              <Text style={styles.title}>
+                {p.repartidorNombre} · {p.calleMostrada}
+              </Text>
+              <Text style={styles.row}>
+                Estado: {p.estado} · Total ${p.total.toFixed(2)}
+              </Text>
+              <View style={styles.actions}>
+                <Button
+                  label="VISTO"
+                  variant="secondary"
+                  onPress={() => void cambiarEstadoPedidoCalle(p, 'visto')}
+                />
+                <Button
+                  label="ARMADO"
+                  variant="primary"
+                  onPress={() => void cambiarEstadoPedidoCalle(p, 'armado')}
+                />
+                <Button
+                  label="CANCELAR"
+                  variant="danger"
+                  onPress={() => void cambiarEstadoPedidoCalle(p, 'cancelado')}
+                />
+              </View>
+            </View>
+          ))
+        )}
+      </View>
+
+      <View style={styles.card}>
         <Text style={styles.label}>Título del pedido</Text>
         <TextInput
           style={styles.input}
@@ -427,6 +539,14 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderWidth: 1,
     borderColor: '#e8e8e8',
+  },
+  cardMini: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#e8e8e8',
+    marginTop: 8,
   },
   title: { fontFamily: 'Poppins_700Bold', color: COLORS.grisTexto },
   row: { fontFamily: 'Poppins_400Regular', color: COLORS.grisSecundario, marginTop: 4 },
