@@ -29,6 +29,11 @@ const estadoSchema = z.object({
   estado: z.enum(['pendiente', 'asignado', 'en_ruta', 'entregado', 'cancelado']),
 });
 
+const asignacionSchema = z.object({
+  repartidorId: z.string().min(3),
+  repartidorNombre: z.string().min(2),
+});
+
 export const adminPedidosRouter = Router();
 
 adminPedidosRouter.get('/repartidores', requireAuth, async (_req, res) => {
@@ -138,5 +143,27 @@ adminPedidosRouter.patch('/admin-pedidos/:id/estado', requireAuth, async (req, r
     return;
   }
   await pool.query(`update pedidos_admin set estado = $2 where id = $1`, [req.params.id, parsed.data.estado]);
+  res.json({ ok: true });
+});
+
+adminPedidosRouter.patch('/admin-pedidos/:id/asignar', requireAuth, async (req, res) => {
+  const parsed = asignacionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Payload inválido.' });
+    return;
+  }
+  const { repartidorId, repartidorNombre } = parsed.data;
+  await pool.query(
+    `insert into repartidores (id, nombre, rol, activo)
+     values ($1, $2, 'repartidor', true)
+     on conflict (id) do update set nombre = excluded.nombre, activo = true`,
+    [repartidorId, repartidorNombre]
+  );
+  await pool.query(
+    `update pedidos_admin
+     set repartidor_id = $2, repartidor_nombre = $3, estado = 'asignado'
+     where id = $1`,
+    [req.params.id, repartidorId, repartidorNombre]
+  );
   res.json({ ok: true });
 });
