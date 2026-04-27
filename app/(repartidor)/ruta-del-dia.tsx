@@ -1,12 +1,15 @@
 import { router } from 'expo-router';
+import { useEffect, useMemo } from 'react';
 import { FlatList, Linking, StyleSheet, Text, View } from 'react-native';
 
 import { RutaTrazada } from '@/components/mapa/RutaTrazada';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
+import { suscribirAdminPedidos } from '@/services/adminPedidos';
 import { useAppStore } from '@/store/useAppStore';
-import type { Cliente } from '@/types';
+import { useAdminPedidosStore } from '@/store/useAdminPedidosStore';
+import type { Cliente, PedidoAdmin } from '@/types';
 
 function abrirNavegacion(c: Cliente) {
   const { lat, lng } = c.coordenadas;
@@ -14,8 +17,36 @@ function abrirNavegacion(c: Cliente) {
   Linking.openURL(url);
 }
 
+function abrirRutaOptimizadaGoogleMaps(paradas: string[], origen?: { lat: number; lng: number } | null) {
+  if (paradas.length === 0) return;
+  const p = paradas.filter(Boolean);
+  if (p.length === 1) {
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(p[0])}&travelmode=driving`;
+    void Linking.openURL(url);
+    return;
+  }
+  const destination = p[p.length - 1];
+  const waypoints = p.slice(0, p.length - 1);
+  const originParam = origen ? `&origin=${encodeURIComponent(`${origen.lat},${origen.lng}`)}` : '';
+  const wp = waypoints.length
+    ? `&waypoints=${encodeURIComponent(`optimize:true|${waypoints.join('|')}`)}`
+    : '';
+  const url = `https://www.google.com/maps/dir/?api=1${originParam}&destination=${encodeURIComponent(
+    destination
+  )}&travelmode=driving${wp}`;
+  void Linking.openURL(url);
+}
+
 export default function RutaDelDia() {
-  const { clientesDelDia, clienteActualIndex, jornadaActiva } = useAppStore();
+  const { clientesDelDia, clienteActualIndex, jornadaActiva, ultimaPosicion } = useAppStore();
+  const pedidosAdmin = useAdminPedidosStore((s) => s.pedidos);
+
+  useEffect(() => suscribirAdminPedidos(() => {}), []);
+
+  const pedidoActivo = useMemo<PedidoAdmin | null>(() => {
+    const activos = pedidosAdmin.filter((p) => p.estado === 'asignado' || p.estado === 'en_ruta');
+    return activos.length > 0 ? activos[0] : null;
+  }, [pedidosAdmin]);
 
   if (!jornadaActiva || clientesDelDia.length === 0) {
     return (
@@ -33,6 +64,21 @@ export default function RutaDelDia() {
   return (
     <Screen title="Mis entregas de hoy" subtitle="Ruta optimizada">
       <RutaTrazada clientes={clientesDelDia} destacarClienteId={actual?.id} />
+      {pedidoActivo ? (
+        <View style={styles.pedidoBox}>
+          <Text style={styles.pedidoTitle}>Pedido asignado: {pedidoActivo.titulo}</Text>
+          <Text style={styles.detalle}>Calles/paradas a cubrir (orden optimizado en Google Maps):</Text>
+          {pedidoActivo.calles.map((c, i) => (
+            <Text key={`${pedidoActivo.id}-${c}-${i}`} style={styles.paradaItem}>
+              {i + 1}. {c}
+            </Text>
+          ))}
+          <Button
+            label="ABRIR RECORRIDO ÓPTIMO EN GOOGLE MAPS"
+            onPress={() => abrirRutaOptimizadaGoogleMaps(pedidoActivo.calles, ultimaPosicion)}
+          />
+        </View>
+      ) : null}
       <FlatList
         data={clientesDelDia}
         keyExtractor={(item) => item.id}
@@ -65,6 +111,17 @@ export default function RutaDelDia() {
 const styles = StyleSheet.create({
   aviso: { backgroundColor: '#fff', borderRadius: 16, padding: 16, gap: 12 },
   avisoTexto: { fontFamily: 'Poppins_600SemiBold', color: COLORS.grisTexto },
+  pedidoBox: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#e8e8e8',
+    gap: 6,
+  },
+  pedidoTitle: { fontFamily: 'Poppins_700Bold', color: COLORS.verdeOscuro },
+  paradaItem: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto },
   card: { backgroundColor: '#fff', borderRadius: 14, padding: 12, marginTop: 8 },
   nombre: { fontFamily: 'Poppins_700Bold', color: COLORS.grisTexto },
   estado: { fontFamily: 'Poppins_400Regular', color: COLORS.grisSecundario, fontSize: 12 },

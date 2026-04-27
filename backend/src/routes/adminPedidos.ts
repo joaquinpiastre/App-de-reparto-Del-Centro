@@ -42,8 +42,9 @@ adminPedidosRouter.get('/repartidores', requireAuth, async (_req, res) => {
 });
 
 adminPedidosRouter.get('/admin-pedidos', requireAuth, async (_req, res) => {
-  const { rows } = await pool.query(
-    `select p.*,
+  const user = (_req as { user?: { sub: string; rol: 'admin' | 'repartidor' } }).user;
+  const esRepartidor = user?.rol === 'repartidor';
+  const baseSelect = `select p.*,
       coalesce(
         json_agg(
           json_build_object(
@@ -56,10 +57,17 @@ adminPedidosRouter.get('/admin-pedidos', requireAuth, async (_req, res) => {
         '[]'::json
       ) as items
      from pedidos_admin p
-     left join pedidos_admin_items i on i.pedido_id = p.id
+     left join pedidos_admin_items i on i.pedido_id = p.id`;
+  const tail = `
      group by p.id
-     order by p.creado_en_ms desc`
-  );
+     order by p.creado_en_ms desc`;
+  const sql = esRepartidor
+    ? `${baseSelect}
+       where p.repartidor_id = $1 and p.estado in ('pendiente','asignado','en_ruta')
+       ${tail}`
+    : `${baseSelect}
+       ${tail}`;
+  const { rows } = esRepartidor ? await pool.query(sql, [user?.sub ?? '']) : await pool.query(sql);
   res.json({ pedidos: rows });
 });
 
