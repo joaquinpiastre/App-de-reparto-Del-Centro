@@ -5,10 +5,24 @@ import { pool } from '../db/client.js';
 
 type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' } };
 
+function parsePrecioInput(value: unknown): number {
+  if (typeof value === 'number') return value;
+  if (typeof value !== 'string') return Number.NaN;
+  const raw = value.trim();
+  if (!raw) return Number.NaN;
+  const cleaned = raw
+    .replace(/\$/g, '')
+    .replace(/\s+/g, '')
+    .replace(/\.(?=\d{3}(?:\D|$))/g, '')
+    .replace(',', '.');
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : Number.NaN;
+}
+
 const productoSchema = z.object({
   codigo: z.string().trim().min(1),
   descripcion: z.string().trim().min(1),
-  precioUnitario: z.number().positive(),
+  precioUnitario: z.preprocess((v) => parsePrecioInput(v), z.number().positive()),
 });
 
 const upsertCatalogoSchema = z.object({
@@ -70,7 +84,9 @@ catalogoProductosRouter.post('/catalogo-productos/reemplazar', requireAuth, asyn
   if (!requireAdmin(req as ReqWithUser, res)) return;
   const parsed = upsertCatalogoSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: 'Payload inválido.' });
+    const issue = parsed.error.issues[0];
+    const where = issue?.path?.join('.') || 'productos';
+    res.status(400).json({ error: `Payload inválido en ${where}: ${issue?.message ?? 'dato inválido'}.` });
     return;
   }
   await ensureCatalogoTables();
