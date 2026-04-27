@@ -29,6 +29,14 @@ const estadoSchema = z.object({
   estado: z.enum(['pendiente', 'asignado', 'en_ruta', 'entregado', 'cancelado']),
 });
 
+const editarPedidoSchema = z.object({
+  titulo: z.string().min(3),
+  calles: z.array(z.string().min(2)).min(1),
+  items: z.array(itemSchema).min(1),
+  total: z.number(),
+  notas: z.string().optional(),
+});
+
 const asignacionSchema = z.object({
   repartidorId: z.string().min(3),
   repartidorNombre: z.string().min(2),
@@ -165,5 +173,53 @@ adminPedidosRouter.patch('/admin-pedidos/:id/asignar', requireAuth, async (req, 
      where id = $1`,
     [req.params.id, repartidorId, repartidorNombre]
   );
+  res.json({ ok: true });
+});
+
+adminPedidosRouter.patch('/admin-pedidos/:id', requireAuth, async (req, res) => {
+  const parsed = editarPedidoSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Payload inválido.' });
+    return;
+  }
+  const p = parsed.data;
+  await pool.query('begin');
+  try {
+    const up = await pool.query(
+      `update pedidos_admin
+       set titulo = $2, calles = $3::jsonb, total = $4, notas = $5
+       where id = $1 and estado = 'pendiente'`,
+      [req.params.id, p.titulo, JSON.stringify(p.calles), p.total, p.notas ?? null]
+    );
+    if (up.rowCount === 0) {
+      await pool.query('rollback');
+      res.status(409).json({ error: 'Solo se pueden editar pedidos pendientes.' });
+      return;
+    }
+    await pool.query(`delete from pedidos_admin_items where pedido_id = $1`, [req.params.id]);
+    for (const item of p.items) {
+      await pool.query(
+        `insert into pedidos_admin_items
+        (pedido_id, descripcion, cantidad, precio_unitario, subtotal)
+        values ($1,$2,$3,$4,$5)`,
+        [req.params.id, item.descripcion, item.cantidad, item.precioUnitario, item.subtotal]
+      );
+    }
+    await pool.query('commit');
+    res.json({ ok: true });
+  } catch (e) {
+    await pool.query('rollback');
+    throw e;
+  }
+});
+
+adminPedidosRouter.delete('/admin-pedidos/:id', requireAuth, async (req, res) => {
+  const del = await pool.query(`delete from pedidos_admin where id = $1 and estado = 'pendiente'`, [
+    req.params.id,
+  ]);
+  if (del.rowCount === 0) {
+    res.status(409).json({ error: 'Solo se pueden eliminar pedidos pendientes.' });
+    return;
+  }
   res.json({ ok: true });
 });
