@@ -1,4 +1,3 @@
-import * as FileSystem from 'expo-file-system';
 import * as XLSX from 'xlsx';
 
 import type { ProductoLista } from '@/types';
@@ -64,8 +63,12 @@ function pickPrecio(row: Record<string, unknown>, keys: string[]): number {
  * Columnas típicas: código | descripción/producto | precio (nombres flexibles).
  */
 export async function parseListaPreciosDesdeUri(uri: string): Promise<ProductoLista[]> {
-  const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-  const wb = XLSX.read(b64, { type: 'base64' });
+  const response = await fetch(uri);
+  if (!response.ok) {
+    throw new Error(`No se pudo leer el archivo (${response.status}).`);
+  }
+  const buffer = await response.arrayBuffer();
+  const wb = XLSX.read(buffer, { type: 'array' });
   const name = wb.SheetNames[0];
   if (!name) return [];
   const sheet = wb.Sheets[name];
