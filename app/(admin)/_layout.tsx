@@ -58,6 +58,7 @@ export default function AdminLayout() {
         <Tabs.Screen name="historial" options={{ title: 'Historial', tabBarIcon: ({ color }) => <MaterialIcons name="history" size={20} color={color} /> }} />
         <Tabs.Screen name="estadisticas" options={{ title: 'Stats', tabBarIcon: ({ color }) => <MaterialIcons name="bar-chart" size={20} color={color} /> }} />
         <Tabs.Screen name="clientes" options={{ title: 'Clientes', tabBarIcon: ({ color }) => <MaterialIcons name="groups" size={20} color={color} /> }} />
+        <Tabs.Screen name="repartidores" options={{ title: 'Repartidores', tabBarIcon: ({ color }) => <MaterialIcons name="delivery-dining" size={20} color={color} /> }} />
       </Tabs>
     </View>
   );

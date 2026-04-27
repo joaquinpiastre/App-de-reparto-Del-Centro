@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { requireAuth } from '../auth.js';
 import { pool } from '../db/client.js';
 
+type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' } };
+
 const itemSchema = z.object({
   descripcion: z.string().min(1),
   cantidad: z.number().int().positive(),
@@ -42,20 +44,103 @@ const asignacionSchema = z.object({
   repartidorNombre: z.string().min(2),
 });
 
+const crearRepartidorSchema = z.object({
+  usuario: z
+    .string()
+    .trim()
+    .min(2)
+    .regex(/^[a-zA-Z0-9._-]+$/, 'Usuario inválido.'),
+  nombre: z.string().trim().min(2),
+  activo: z.boolean().optional(),
+});
+
+const editarRepartidorSchema = z
+  .object({
+    nombre: z.string().trim().min(2).optional(),
+    activo: z.boolean().optional(),
+  })
+  .refine((x) => x.nombre !== undefined || x.activo !== undefined, {
+    message: 'Debés enviar al menos un campo a actualizar.',
+  });
+
 export const adminPedidosRouter = Router();
 
-adminPedidosRouter.get('/repartidores', requireAuth, async (_req, res) => {
+function requireAdmin(req: ReqWithUser, res: { status: (n: number) => { json: (b: unknown) => void } }): boolean {
+  if (req.user?.rol !== 'admin') {
+    res.status(403).json({ error: 'Solo admins pueden administrar repartidores.' });
+    return false;
+  }
+  return true;
+}
+
+adminPedidosRouter.get('/repartidores', requireAuth, async (req, res) => {
+  const includeInactivos =
+    String(req.query.includeInactivos ?? '').trim().toLowerCase() === '1' ||
+    String(req.query.includeInactivos ?? '').trim().toLowerCase() === 'true';
+  const whereActivo = includeInactivos ? '' : " and activo = true";
   const { rows } = await pool.query(
     `select id, nombre, rol, activo
      from repartidores
-     where rol = 'repartidor' and activo = true
-     order by nombre asc`
+     where rol = 'repartidor'${whereActivo}
+     order by activo desc, nombre asc`
   );
   res.json({ repartidores: rows });
 });
 
+adminPedidosRouter.post('/repartidores', requireAuth, async (req, res) => {
+  if (!requireAdmin(req as ReqWithUser, res)) return;
+  const parsed = crearRepartidorSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Payload inválido.' });
+    return;
+  }
+  const usuario = parsed.data.usuario.toLowerCase();
+  const id = usuario.startsWith('usr-') ? usuario : `usr-${usuario}`;
+  const nombre = parsed.data.nombre.trim();
+  const activo = parsed.data.activo ?? true;
+  await pool.query(
+    `insert into repartidores (id, nombre, rol, activo)
+     values ($1, $2, 'repartidor', $3)
+     on conflict (id) do update
+       set nombre = excluded.nombre,
+           activo = excluded.activo,
+           rol = 'repartidor'`,
+    [id, nombre, activo]
+  );
+  res.json({ ok: true, repartidor: { id, nombre, rol: 'repartidor', activo } });
+});
+
+adminPedidosRouter.patch('/repartidores/:id', requireAuth, async (req, res) => {
+  if (!requireAdmin(req as ReqWithUser, res)) return;
+  const parsed = editarRepartidorSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Payload inválido.' });
+    return;
+  }
+  const current = await pool.query(
+    `select id, nombre, activo
+     from repartidores
+     where id = $1 and rol = 'repartidor'`,
+    [req.params.id]
+  );
+  if (current.rowCount === 0) {
+    res.status(404).json({ error: 'Repartidor no encontrado.' });
+    return;
+  }
+  const prev = current.rows[0] as { id: string; nombre: string; activo: boolean };
+  const nombre = parsed.data.nombre?.trim() ?? prev.nombre;
+  const activo = parsed.data.activo ?? prev.activo;
+  await pool.query(
+    `update repartidores
+     set nombre = $2, activo = $3
+     where id = $1 and rol = 'repartidor'`,
+    [req.params.id, nombre, activo]
+  );
+  res.json({ ok: true, repartidor: { id: req.params.id, nombre, rol: 'repartidor', activo } });
+});
+
 adminPedidosRouter.get('/admin-pedidos', requireAuth, async (_req, res) => {
-  const user = (_req as { user?: { sub: string; rol: 'admin' | 'repartidor' } }).user;
+  const user = (_req as ReqWithUser).user;
   const esRepartidor = user?.rol === 'repartidor';
   const baseSelect = `select p.*,
       coalesce(
