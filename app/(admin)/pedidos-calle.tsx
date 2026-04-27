@@ -6,14 +6,16 @@ import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
 import { DEMO_REPARTIDOR_USER } from '@/constants/demoAuth';
 import {
-  actualizarEstadoPedidoAdmin,
   crearPedidoAdmin,
+  editarPedidoAdmin,
+  eliminarPedidoAdmin,
   obtenerRepartidoresDisponibles,
+  asignarPedidoAdmin,
   suscribirAdminPedidos,
 } from '@/services/adminPedidos';
 import { useAppStore } from '@/store/useAppStore';
 import { useAdminPedidosStore } from '@/store/useAdminPedidosStore';
-import type { EstadoPedidoAdmin, PedidoAdmin, PedidoAdminItem, Usuario } from '@/types';
+import type { PedidoAdmin, PedidoAdminItem, Usuario } from '@/types';
 
 function fmtFecha(ts: number) {
   try {
@@ -28,7 +30,8 @@ function fmtFecha(ts: number) {
   }
 }
 
-const ESTADOS_FLUJO: EstadoPedidoAdmin[] = ['pendiente', 'asignado', 'en_ruta', 'entregado'];
+const REPARTIDOR_SIN_ASIGNAR_ID = 'usr-sin-asignar';
+const REPARTIDOR_SIN_ASIGNAR_NOMBRE = 'Sin asignar';
 
 export default function PedidosCalleAdmin() {
   const lista = useAdminPedidosStore((s) => s.pedidos);
@@ -43,6 +46,7 @@ export default function PedidosCalleAdmin() {
   const [items, setItems] = useState<PedidoAdminItem[]>([]);
   const [notas, setNotas] = useState('');
   const [repartidorId, setRepartidorId] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [feedback, setFeedback] = useState<{ tipo: 'ok' | 'error'; msg: string } | null>(null);
 
@@ -86,6 +90,10 @@ export default function PedidosCalleAdmin() {
   }, []);
 
   const total = useMemo(() => items.reduce((acc, x) => acc + x.subtotal, 0), [items]);
+  const listaPendientes = useMemo(
+    () => lista.filter((x) => x.estado === 'pendiente').sort((a, b) => b.creadoEn - a.creadoEn),
+    [lista]
+  );
 
   const agregarItem = () => {
     const n = Math.max(1, parseInt(cantidad, 10) || 1);
@@ -117,7 +125,6 @@ export default function PedidosCalleAdmin() {
       .split(',')
       .map((c) => c.trim())
       .filter(Boolean);
-    const repartidor = repartidores.find((r) => r.id === repartidorId);
     if (!titulo.trim()) {
       avisar('Pedido', 'Definí un título para el pedido.');
       return;
@@ -126,34 +133,48 @@ export default function PedidosCalleAdmin() {
       avisar('Pedido', 'Ingresá al menos una calle.');
       return;
     }
-    if (!repartidor) {
-      avisar('Pedido', 'Seleccioná un repartidor.');
-      return;
-    }
     if (items.length === 0) {
       avisar('Pedido', 'Agregá al menos un producto.');
+      return;
+    }
+    const repartidorSeleccionado = repartidores.find((r) => r.id === repartidorId);
+    if (!editingId && !repartidorSeleccionado) {
+      avisar('Pedido', 'Seleccioná un repartidor antes de crear y enviar el pedido.');
       return;
     }
 
     try {
       setGuardando(true);
       setFeedback(null);
-      const resultados = await Promise.allSettled(
-        calles.map((calle) =>
-          crearPedidoAdmin({
-            titulo: titulo.trim(),
-            calles: [calle],
-            repartidorId: repartidor.id,
-            repartidorNombre: repartidor.nombre,
-            items,
-            total,
-            notas: notas.trim() || undefined,
-            estado: 'asignado',
-            creadoPorId: usuario?.id,
-            creadoPorNombre: usuario?.nombre,
-          })
-        )
-      );
+      const op =
+        editingId != null
+          ? Promise.allSettled([
+              editarPedidoAdmin(editingId, {
+                titulo: titulo.trim(),
+                calles,
+                items,
+                total,
+                notas: notas.trim() || undefined,
+              }),
+            ])
+          : Promise.allSettled(
+              calles.map((calle) =>
+                crearPedidoAdmin({
+                  titulo: titulo.trim(),
+                  calles: [calle],
+                  repartidorId: repartidorSeleccionado?.id ?? REPARTIDOR_SIN_ASIGNAR_ID,
+                  repartidorNombre:
+                    repartidorSeleccionado?.nombre ?? REPARTIDOR_SIN_ASIGNAR_NOMBRE,
+                  items,
+                  total,
+                  notas: notas.trim() || undefined,
+                  estado: repartidorSeleccionado ? 'asignado' : 'pendiente',
+                  creadoPorId: usuario?.id,
+                  creadoPorNombre: usuario?.nombre,
+                })
+              )
+            );
+      const resultados = await op;
       const creados = resultados.filter((r) => r.status === 'fulfilled').length;
       const fallidos = resultados.length - creados;
       const errores = resultados
@@ -165,9 +186,16 @@ export default function PedidosCalleAdmin() {
         setCallesRaw('');
         setItems([]);
         setNotas('');
+        setEditingId(null);
       }
       if (fallidos === 0) {
-        avisar('Listo', `Se crearon ${creados} pedidos (uno por calle).`, 'ok');
+        avisar(
+          'Listo',
+          editingId
+            ? 'Pedido actualizado correctamente.'
+            : `Se crearon y asignaron ${creados} pedidos a ${repartidorSeleccionado?.nombre}.`,
+          'ok'
+        );
       } else {
         avisar(
           'Creación parcial',
@@ -188,14 +216,57 @@ export default function PedidosCalleAdmin() {
     }
   };
 
-  const avanzarEstado = async (pedido: PedidoAdmin) => {
-    const idx = ESTADOS_FLUJO.indexOf(pedido.estado);
-    if (idx < 0 || idx >= ESTADOS_FLUJO.length - 1) return;
-    const next = ESTADOS_FLUJO[idx + 1];
+  const enviarPendientes = async () => {
+    const repartidor = repartidores.find((r) => r.id === repartidorId);
+    if (!repartidor) {
+      avisar('Envío', 'Seleccioná un repartidor para enviar los pedidos.');
+      return;
+    }
+    if (listaPendientes.length === 0) {
+      avisar('Envío', 'No hay pedidos pendientes para enviar.');
+      return;
+    }
+    setGuardando(true);
     try {
-      await actualizarEstadoPedidoAdmin(pedido.id, next);
+      const resultados = await Promise.allSettled(
+        listaPendientes.map((p) => asignarPedidoAdmin(p.id, repartidor.id, repartidor.nombre))
+      );
+      const ok = resultados.filter((x) => x.status === 'fulfilled').length;
+      const fail = resultados.length - ok;
+      if (fail === 0) {
+        avisar('Listo', `Se enviaron ${ok} pedidos a ${repartidor.nombre}.`, 'ok');
+      } else {
+        avisar('Envío parcial', `Se enviaron ${ok} y fallaron ${fail}.`);
+      }
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const iniciarEdicion = (pedido: PedidoAdmin) => {
+    setEditingId(pedido.id);
+    setTitulo(pedido.titulo);
+    setCallesRaw(pedido.calles.join(', '));
+    setItems(pedido.items);
+    setNotas(pedido.notas ?? '');
+    setDescripcion('');
+    setPrecio('');
+    setCantidad('1');
+  };
+
+  const borrarPedido = async (pedidoId: string) => {
+    try {
+      await eliminarPedidoAdmin(pedidoId);
+      if (editingId === pedidoId) {
+        setEditingId(null);
+        setTitulo('');
+        setCallesRaw('');
+        setItems([]);
+        setNotas('');
+      }
+      avisar('Listo', 'Pedido eliminado.', 'ok');
     } catch (e) {
-      Alert.alert('Estado', e instanceof Error ? e.message : 'No se pudo actualizar el estado.');
+      avisar('Eliminar', e instanceof Error ? e.message : 'No se pudo eliminar.');
     }
   };
 
@@ -221,18 +292,6 @@ export default function PedidosCalleAdmin() {
           value={callesRaw}
           onChangeText={setCallesRaw}
         />
-        <Text style={styles.label}>Asignar a repartidor</Text>
-        <View style={styles.actions}>
-          {repartidores.map((r) => (
-            <Button
-              key={r.id}
-              label={r.nombre}
-              variant={repartidorId === r.id ? 'primary' : 'secondary'}
-              onPress={() => setRepartidorId(r.id)}
-            />
-          ))}
-        </View>
-
         <Text style={styles.label}>Producto</Text>
         <TextInput
           style={styles.input}
@@ -271,26 +330,58 @@ export default function PedidosCalleAdmin() {
           multiline
         />
         <Button
-          label={guardando ? 'GUARDANDO…' : 'CREAR Y ASIGNAR PEDIDO'}
+          label={guardando ? 'GUARDANDO…' : editingId ? 'ACTUALIZAR PEDIDO' : 'CREAR Y ASIGNAR PEDIDO'}
           loading={guardando}
           onPress={() => void guardarPedido()}
+        />
+        {editingId ? (
+          <Button
+            label="CANCELAR EDICIÓN"
+            variant="secondary"
+            onPress={() => {
+              setEditingId(null);
+              setTitulo('');
+              setCallesRaw('');
+              setItems([]);
+              setNotas('');
+            }}
+          />
+        ) : null}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.label}>Enviar todos los pendientes a repartidor</Text>
+        <View style={styles.actions}>
+          {repartidores.map((r) => (
+            <Button
+              key={`env-${r.id}`}
+              label={r.nombre}
+              variant={repartidorId === r.id ? 'primary' : 'secondary'}
+              onPress={() => setRepartidorId(r.id)}
+            />
+          ))}
+        </View>
+        <Button
+          label={guardando ? 'ENVIANDO…' : 'ENVIAR PENDIENTES AL REPARTIDOR'}
+          loading={guardando}
+          onPress={() => void enviarPendientes()}
         />
       </View>
 
       <FlatList
         style={styles.list}
-        data={lista}
+        data={listaPendientes}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingBottom: 24 }}
-        ListEmptyComponent={<Text style={styles.empty}>Todavía no hay pedidos admin.</Text>}
+        ListEmptyComponent={
+          <Text style={styles.empty}>No hay pedidos pendientes. Podés cargar un nuevo lote.</Text>
+        }
         renderItem={({ item }) => (
           <View style={styles.card}>
             <Text style={styles.title}>
               {item.titulo} · {fmtFecha(item.creadoEn)}
             </Text>
-            <Text style={styles.row}>
-              {item.repartidorNombre} · Estado: {item.estado} · Total ${item.total.toFixed(2)}
-            </Text>
+            <Text style={styles.row}>Estado: {item.estado} · Total ${item.total.toFixed(2)}</Text>
             <Text style={styles.row}>Calles: {item.calles.join(', ')}</Text>
             {item.items.map((l, i) => (
               <Text key={`${item.id}-l-${i}`} style={styles.itemLine}>
@@ -298,11 +389,10 @@ export default function PedidosCalleAdmin() {
               </Text>
             ))}
             {item.notas ? <Text style={styles.notas}>Nota: {item.notas}</Text> : null}
-            {item.estado !== 'entregado' && item.estado !== 'cancelado' ? (
-              <View style={styles.actions}>
-                <Button label="Siguiente estado" onPress={() => void avanzarEstado(item)} />
-              </View>
-            ) : null}
+            <View style={styles.actions}>
+              <Button label="Editar" variant="secondary" onPress={() => iniciarEdicion(item)} />
+              <Button label="Eliminar" variant="danger" onPress={() => void borrarPedido(item.id)} />
+            </View>
           </View>
         )}
       />
@@ -344,4 +434,5 @@ const styles = StyleSheet.create({
   itemLine: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto, marginTop: 2 },
   notas: { fontFamily: 'Poppins_600SemiBold', color: COLORS.verdeOscuro, marginTop: 8 },
   actions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  actionsWrap: { marginTop: 8 },
 });

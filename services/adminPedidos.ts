@@ -57,6 +57,47 @@ export async function actualizarEstadoPedidoAdmin(
   });
 }
 
+export async function asignarPedidoAdmin(
+  id: string,
+  repartidorId: string,
+  repartidorNombre: string
+): Promise<void> {
+  useAdminPedidosStore.getState().reemplazarPedidosDesdeRemoto(
+    useAdminPedidosStore
+      .getState()
+      .pedidos.map((p) =>
+        p.id === id ? { ...p, repartidorId, repartidorNombre, estado: 'asignado' as EstadoPedidoAdmin } : p
+      )
+  );
+  if (!API_ENABLED) return;
+  await apiRequest(`/admin-pedidos/${id}/asignar`, {
+    method: 'PATCH',
+    body: JSON.stringify({ repartidorId, repartidorNombre }),
+  });
+}
+
+export async function editarPedidoAdmin(
+  id: string,
+  payload: Pick<PedidoAdmin, 'titulo' | 'calles' | 'items' | 'total' | 'notas'>
+): Promise<void> {
+  useAdminPedidosStore.getState().reemplazarPedidosDesdeRemoto(
+    useAdminPedidosStore.getState().pedidos.map((p) => (p.id === id ? { ...p, ...payload } : p))
+  );
+  if (!API_ENABLED) return;
+  await apiRequest(`/admin-pedidos/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function eliminarPedidoAdmin(id: string): Promise<void> {
+  useAdminPedidosStore
+    .getState()
+    .reemplazarPedidosDesdeRemoto(useAdminPedidosStore.getState().pedidos.filter((p) => p.id !== id));
+  if (!API_ENABLED) return;
+  await apiRequest(`/admin-pedidos/${id}`, { method: 'DELETE' });
+}
+
 export async function obtenerRepartidoresDisponibles(): Promise<Usuario[]> {
   if (!API_ENABLED) {
     return [];
