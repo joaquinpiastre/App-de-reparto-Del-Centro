@@ -81,6 +81,13 @@ adminPedidosRouter.post('/admin-pedidos', requireAuth, async (req, res) => {
   await pool.query('begin');
   try {
     await pool.query(
+      `insert into repartidores (id, nombre, rol, activo)
+       values ($1, $2, 'repartidor', true)
+       on conflict (id) do update set nombre = excluded.nombre, activo = true`,
+      [p.repartidorId, p.repartidorNombre]
+    );
+
+    await pool.query(
       `insert into pedidos_admin
       (id, titulo, calles, repartidor_id, repartidor_nombre, total, notas, estado, creado_por_id, creado_por_nombre, creado_en_ms)
       values ($1,$2,$3::jsonb,$4,$5,$6,$7,$8,$9,$10,$11)
