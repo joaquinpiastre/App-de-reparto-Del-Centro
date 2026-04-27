@@ -8,6 +8,7 @@ import { CLIENTES_DEMO_SEED } from '@/constants/demoData';
 import { useAppStore } from '@/store/useAppStore';
 import { useAdminPedidosStore } from '@/store/useAdminPedidosStore';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
+import { setAuthToken } from '@/services/apiClient';
 
 export default function AdminDashboard() {
   const { resetSesion } = useAppStore();
@@ -18,6 +19,7 @@ export default function AdminDashboard() {
 
   const cerrarSesion = async () => {
     await AsyncStorage.multiRemove(['jornada_id', 'repartidor_id']);
+    await setAuthToken(null);
     resetSesion();
     router.replace('/(auth)/login');
   };

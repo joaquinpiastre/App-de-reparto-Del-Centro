@@ -6,6 +6,7 @@ import * as Print from 'expo-print';
 
 import { Screen } from '@/components/ui/Screen';
 import { Button } from '@/components/ui/Button';
+import { setAuthToken } from '@/services/apiClient';
 import { useHistorialStore } from '@/store/useHistorialStore';
 import { useAppStore } from '@/store/useAppStore';
 
@@ -64,6 +65,7 @@ export default function Resumen() {
 
   const cerrarSesion = async () => {
     await AsyncStorage.multiRemove(['jornada_id', 'repartidor_id']);
+    await setAuthToken(null);
     resetSesion();
     router.replace('/(auth)/login');
   };

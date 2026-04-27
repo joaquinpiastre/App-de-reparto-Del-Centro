@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
+import { setAuthToken } from '@/services/apiClient';
 import { useAppStore } from '@/store/useAppStore';
 
 const TEL_LOCAL = '2604500000';
@@ -41,6 +42,7 @@ export default function HomeRepartidor() {
 
   const cerrarSesion = async () => {
     await AsyncStorage.multiRemove(['jornada_id', 'repartidor_id']);
+    await setAuthToken(null);
     resetSesion();
     router.replace('/(auth)/login');
   };

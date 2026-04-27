@@ -156,6 +156,10 @@ export default function PedidosCalleAdmin() {
       );
       const creados = resultados.filter((r) => r.status === 'fulfilled').length;
       const fallidos = resultados.length - creados;
+      const errores = resultados
+        .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+        .map((r) => (r.reason instanceof Error ? r.reason.message : String(r.reason)));
+      const detalleError = errores[0] ?? 'Sin detalle';
       if (creados > 0) {
         setTitulo('');
         setCallesRaw('');
@@ -167,7 +171,7 @@ export default function PedidosCalleAdmin() {
       } else {
         avisar(
           'Creación parcial',
-          `Se crearon ${creados} pedidos y fallaron ${fallidos}. Revisá conexión/API.`,
+          `Se crearon ${creados} pedidos y fallaron ${fallidos}. Motivo: ${detalleError}`,
           'error'
         );
       }

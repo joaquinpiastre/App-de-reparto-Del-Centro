@@ -1,4 +1,4 @@
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useEffect, useRef } from 'react';
 import { Platform, View } from 'react-native';
@@ -6,12 +6,18 @@ import { Platform, View } from 'react-native';
 import { COLORS } from '@/constants/colors';
 import { notificacionLocal } from '@/services/notificaciones';
 import { suscribirPedidosCalle } from '@/services/pedidosCalle';
+import { useAppStore } from '@/store/useAppStore';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
 
 export default function AdminLayout() {
+  const usuario = useAppStore((s) => s.usuario);
   const pedidos = usePedidosCalleStore((s) => s.pedidos);
   const boot = useRef(true);
   const ultimaNotificada = useRef<string | null>(null);
+
+  if (!usuario || usuario.rol !== 'admin') {
+    return <Redirect href="/(auth)/login" />;
+  }
 
   useEffect(() => {
     return suscribirPedidosCalle(() => {});

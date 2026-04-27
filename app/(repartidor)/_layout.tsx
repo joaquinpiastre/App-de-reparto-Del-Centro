@@ -1,11 +1,17 @@
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Platform, View } from 'react-native';
 
 import { COLORS } from '@/constants/colors';
+import { useAppStore } from '@/store/useAppStore';
 
 export default function RepartidorLayout() {
+  const usuario = useAppStore((s) => s.usuario);
   const shellStyle = Platform.OS === 'web' ? { flex: 1, width: '100%' as const, minHeight: 0 } : { flex: 1 };
+
+  if (!usuario || usuario.rol !== 'repartidor') {
+    return <Redirect href="/(auth)/login" />;
+  }
 
   return (
     <View style={shellStyle}>
