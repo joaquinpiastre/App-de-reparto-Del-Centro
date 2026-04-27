@@ -41,6 +41,7 @@ export default function AdminLayout() {
   }, [pedidos]);
 
   const shellStyle = Platform.OS === 'web' ? { flex: 1, width: '100%' as const, minHeight: 0 } : { flex: 1 };
+  const isWeb = Platform.OS === 'web';
 
   return (
     <View style={shellStyle}>
@@ -50,15 +51,26 @@ export default function AdminLayout() {
           headerShown: false,
           lazy: false,
           tabBarActiveTintColor: COLORS.verdeOscuro,
+          tabBarInactiveTintColor: '#75808a',
+          tabBarLabelStyle: { fontSize: 11, fontFamily: 'Poppins_600SemiBold' },
+          tabBarIconStyle: { marginTop: 2 },
+          tabBarStyle: {
+            height: isWeb ? 58 : 62,
+            paddingTop: 6,
+            paddingBottom: isWeb ? 6 : 8,
+            backgroundColor: '#fff',
+            borderTopColor: '#dde3e8',
+            borderTopWidth: 1,
+          },
         }}
       >
-        <Tabs.Screen name="index" options={{ title: 'Dashboard', tabBarIcon: ({ color }) => <MaterialIcons name="dashboard" size={20} color={color} /> }} />
-        <Tabs.Screen name="pedidos-calle" options={{ title: 'Pedidos', tabBarIcon: ({ color }) => <MaterialIcons name="notifications-active" size={20} color={color} /> }} />
-        <Tabs.Screen name="mapa-vivo" options={{ title: 'Mapa', tabBarIcon: ({ color }) => <MaterialIcons name="map" size={20} color={color} /> }} />
-        <Tabs.Screen name="historial" options={{ title: 'Historial', tabBarIcon: ({ color }) => <MaterialIcons name="history" size={20} color={color} /> }} />
-        <Tabs.Screen name="estadisticas" options={{ title: 'Stats', tabBarIcon: ({ color }) => <MaterialIcons name="bar-chart" size={20} color={color} /> }} />
-        <Tabs.Screen name="clientes" options={{ title: 'Clientes', tabBarIcon: ({ color }) => <MaterialIcons name="groups" size={20} color={color} /> }} />
-        <Tabs.Screen name="repartidores" options={{ title: 'Repartidores', tabBarIcon: ({ color }) => <MaterialIcons name="delivery-dining" size={20} color={color} /> }} />
+        <Tabs.Screen name="index" options={{ title: 'Dashboard', tabBarIcon: ({ color, focused }) => <MaterialIcons name="dashboard" size={focused ? 23 : 21} color={color} /> }} />
+        <Tabs.Screen name="pedidos-calle" options={{ title: 'Pedidos', tabBarIcon: ({ color, focused }) => <MaterialIcons name="notifications-active" size={focused ? 23 : 21} color={color} /> }} />
+        <Tabs.Screen name="mapa-vivo" options={{ title: 'Mapa', tabBarIcon: ({ color, focused }) => <MaterialIcons name="map" size={focused ? 23 : 21} color={color} /> }} />
+        <Tabs.Screen name="historial" options={{ title: 'Historial', tabBarIcon: ({ color, focused }) => <MaterialIcons name="history" size={focused ? 23 : 21} color={color} /> }} />
+        <Tabs.Screen name="estadisticas" options={{ title: 'Stats', tabBarIcon: ({ color, focused }) => <MaterialIcons name="bar-chart" size={focused ? 23 : 21} color={color} /> }} />
+        <Tabs.Screen name="clientes" options={{ title: 'Clientes', tabBarIcon: ({ color, focused }) => <MaterialIcons name="groups" size={focused ? 23 : 21} color={color} /> }} />
+        <Tabs.Screen name="repartidores" options={{ title: 'Repartidores', tabBarIcon: ({ color, focused }) => <MaterialIcons name="delivery-dining" size={focused ? 23 : 21} color={color} /> }} />
       </Tabs>
     </View>
   );
