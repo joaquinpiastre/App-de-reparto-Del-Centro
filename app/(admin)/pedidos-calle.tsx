@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
@@ -44,6 +44,18 @@ export default function PedidosCalleAdmin() {
   const [notas, setNotas] = useState('');
   const [repartidorId, setRepartidorId] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [feedback, setFeedback] = useState<{ tipo: 'ok' | 'error'; msg: string } | null>(null);
+
+  const avisar = (titulo: string, msg: string, tipo: 'ok' | 'error' = 'error') => {
+    setFeedback({ tipo, msg });
+    if (Platform.OS === 'web') {
+      if (typeof globalThis !== 'undefined' && typeof globalThis.alert === 'function') {
+        globalThis.alert(`${titulo}\n${msg}`);
+      }
+      return;
+    }
+    Alert.alert(titulo, msg);
+  };
 
   useEffect(() => suscribirAdminPedidos(() => {}), []);
 
@@ -107,24 +119,25 @@ export default function PedidosCalleAdmin() {
       .filter(Boolean);
     const repartidor = repartidores.find((r) => r.id === repartidorId);
     if (!titulo.trim()) {
-      Alert.alert('Pedido', 'Definí un título para el pedido.');
+      avisar('Pedido', 'Definí un título para el pedido.');
       return;
     }
     if (calles.length === 0) {
-      Alert.alert('Pedido', 'Ingresá al menos una calle.');
+      avisar('Pedido', 'Ingresá al menos una calle.');
       return;
     }
     if (!repartidor) {
-      Alert.alert('Pedido', 'Seleccioná un repartidor.');
+      avisar('Pedido', 'Seleccioná un repartidor.');
       return;
     }
     if (items.length === 0) {
-      Alert.alert('Pedido', 'Agregá al menos un producto.');
+      avisar('Pedido', 'Agregá al menos un producto.');
       return;
     }
 
     try {
       setGuardando(true);
+      setFeedback(null);
       await crearPedidoAdmin({
         titulo: titulo.trim(),
         calles,
@@ -141,9 +154,15 @@ export default function PedidosCalleAdmin() {
       setCallesRaw('');
       setItems([]);
       setNotas('');
-      Alert.alert('Listo', 'Pedido creado y asignado al repartidor.');
+      avisar('Listo', 'Pedido creado y asignado al repartidor.', 'ok');
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo crear el pedido.');
+      avisar(
+        'Error al crear pedido',
+        e instanceof Error
+          ? `No se pudo guardar en la API: ${e.message}`
+          : 'No se pudo guardar en la API.',
+        'error'
+      );
     } finally {
       setGuardando(false);
     }
@@ -162,6 +181,11 @@ export default function PedidosCalleAdmin() {
 
   return (
     <Screen title="Gestión de pedidos" subtitle="Admin crea, asigna calles y productos por repartidor">
+      {feedback ? (
+        <View style={[styles.feedback, feedback.tipo === 'ok' ? styles.feedbackOk : styles.feedbackError]}>
+          <Text style={styles.feedbackText}>{feedback.msg}</Text>
+        </View>
+      ) : null}
       <View style={styles.card}>
         <Text style={styles.label}>Título del pedido</Text>
         <TextInput
@@ -267,6 +291,10 @@ export default function PedidosCalleAdmin() {
 }
 
 const styles = StyleSheet.create({
+  feedback: { borderRadius: 12, padding: 10, marginBottom: 8, borderWidth: 1 },
+  feedbackOk: { backgroundColor: '#ecfdf3', borderColor: '#52c47a' },
+  feedbackError: { backgroundColor: '#fff3f3', borderColor: '#e06a6a' },
+  feedbackText: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto },
   list: { flex: 1, minHeight: 0 },
   label: { fontFamily: 'Poppins_600SemiBold', color: COLORS.grisTexto, marginTop: 8 },
   input: {
