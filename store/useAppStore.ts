@@ -1,16 +1,59 @@
 import { create } from 'zustand';
 import { Alert } from 'react-native';
 
-import { CLIENTES_DEMO_SEED } from '@/constants/demoData';
+import { CLIENTES_DEMO_SEED, REGION_SAN_RAFAEL } from '@/constants/demoData';
 import { optimizarRuta } from '@/hooks/useRuta';
-import { registrarEntregaApi } from '@/services/entregasApi';
+import { obtenerPedidosAdmin } from '@/services/adminPedidos';
+import { registrarCierreJornadaApi, registrarEntregaApi } from '@/services/entregasApi';
 import { detenerGPS, iniciarGPS } from '@/services/gps';
-import type { Cliente, Coordenadas, EstadoEntrega, Usuario } from '@/types';
+import type { Cliente, Coordenadas, EstadoEntrega, PedidoAdmin, Usuario } from '@/types';
 
 import { useHistorialStore } from './useHistorialStore';
 
 function clonarClientesIniciales(): Cliente[] {
   return optimizarRuta(JSON.parse(JSON.stringify(CLIENTES_DEMO_SEED)) as Cliente[]);
+}
+
+function hashToOffset(seed: string): number {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return ((hash % 1000) - 500) / 100000;
+}
+
+function pedidoToCliente(p: PedidoAdmin, index: number): Cliente {
+  const direccion = p.calles.join(', ').trim() || 'Dirección no informada';
+  const primerItem = p.items[0];
+  return {
+    id: p.id,
+    nombre: p.titulo || `Pedido ${index + 1}`,
+    direccion,
+    telefono: '-',
+    pedido: primerItem
+      ? `${primerItem.cantidad} x ${primerItem.descripcion}`
+      : `Pedido #${index + 1}`,
+    coordenadas: {
+      lat: REGION_SAN_RAFAEL.latitude + hashToOffset(`${p.id}-lat`),
+      lng: REGION_SAN_RAFAEL.longitude + hashToOffset(`${p.id}-lng`),
+    },
+    estado: p.estado === 'entregado' ? 'entregado' : p.estado === 'cancelado' ? 'problema' : 'pendiente',
+    orden: index + 1,
+    estimadoMin: 10,
+  };
+}
+
+async function cargarClientesDesdePedidosAdmin(usuario: Usuario | null): Promise<Cliente[]> {
+  if (!usuario?.id) return [];
+  const pedidos = await obtenerPedidosAdmin();
+  const activos = pedidos
+    .filter(
+      (p) =>
+        p.repartidorId === usuario.id &&
+        (p.estado === 'pendiente' || p.estado === 'asignado' || p.estado === 'en_ruta')
+    )
+    .sort((a, b) => a.creadoEn - b.creadoEn);
+  return activos.map(pedidoToCliente);
 }
 
 interface AppStore {
@@ -62,12 +105,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
   iniciarJornada: async () => {
     const { usuario } = get();
     const jornadaId = `jor-${Date.now()}`;
+    let clientes = clonarClientesIniciales();
+    try {
+      const clientesAdmin = await cargarClientesDesdePedidosAdmin(usuario);
+      if (clientesAdmin.length > 0) {
+        clientes = optimizarRuta(clientesAdmin);
+      }
+    } catch (err) {
+      console.warn('cargarClientesDesdePedidosAdmin:', err);
+    }
     set({
       jornadaActiva: true,
       gpsActivo: true,
       jornadaId,
       jornadaInicioEpoch: Date.now(),
-      clientesDelDia: clonarClientesIniciales(),
+      clientesDelDia: clientes,
       clienteActualIndex: 0,
       fotoPendienteUri: null,
       entregaTimerSegundos: 0,
@@ -83,17 +135,32 @@ export const useAppStore = create<AppStore>((set, get) => ({
     await detenerGPS().catch((err) => console.warn('detenerGPS:', err));
   },
   cerrarJornada: async () => {
-    const { usuario, clientesDelDia, jornadaInicioEpoch, jornadaActiva } = get();
+    const { usuario, clientesDelDia, jornadaInicioEpoch, jornadaActiva, jornadaId } = get();
     if (jornadaActiva && jornadaInicioEpoch) {
       const completados = clientesDelDia.filter((c) => c.estado === 'entregado').length;
       const minutos = Math.max(1, Math.round((Date.now() - jornadaInicioEpoch) / 60000));
+      const fechaIso = new Date().toISOString();
       useHistorialStore.getState().registrarCierre({
-        fechaIso: new Date().toISOString(),
+        fechaIso,
         repartidorNombre: usuario?.nombre ?? 'Repartidor',
         completados,
         total: clientesDelDia.length,
         minutosEnRuta: minutos,
       });
+      if (jornadaId && usuario?.id) {
+        void registrarCierreJornadaApi({
+          jornadaId,
+          repartidorId: usuario.id,
+          repartidorNombre: usuario.nombre,
+          completados,
+          total: clientesDelDia.length,
+          minutosEnRuta: minutos,
+          fechaIso,
+        }).catch((err) => {
+          const msg = err instanceof Error ? err.message : 'No se pudo enviar el cierre al backend.';
+          Alert.alert('Cierre no sincronizado', msg);
+        });
+      }
     }
     set({
       jornadaActiva: false,

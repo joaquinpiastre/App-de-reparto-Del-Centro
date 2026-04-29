@@ -1,8 +1,7 @@
 import { router } from 'expo-router';
 import { useMemo } from 'react';
-import { Alert, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Print from 'expo-print';
 
 import { Screen } from '@/components/ui/Screen';
 import { Button } from '@/components/ui/Button';
@@ -70,20 +69,6 @@ export default function Resumen() {
     router.replace('/(auth)/login');
   };
 
-  const guardarReporte = async () => {
-    try {
-      const html = `
-        <html><body style="font-family: sans-serif;">
-        <h2>Del Centro — ${stats.titulo}</h2>
-        <ul>${stats.lineas.map((l) => `<li>${l}</li>`).join('')}</ul>
-        </body></html>`;
-      const { uri } = await Print.printToFileAsync({ html });
-      await Share.share({ url: uri, message: 'Resumen de reparto Del Centro' });
-    } catch {
-      Alert.alert('Reporte', 'No se pudo generar el PDF. Probá de nuevo.');
-    }
-  };
-
   return (
     <Screen title="Tu progreso" subtitle="Resumen del día">
       <View style={styles.card}>
@@ -94,15 +79,14 @@ export default function Resumen() {
           </Text>
         ))}
       </View>
-      <Button label="GUARDAR / COMPARTIR REPORTE" onPress={() => void guardarReporte()} />
       <Button
-        label="CERRAR TURNO"
+        label="GUARDAR Y CERRAR TURNO"
         variant="secondary"
         onPress={() => {
-          Alert.alert('Cerrar turno', '¿Finalizar la jornada y guardar el resumen?', [
+          Alert.alert('Guardar turno', '¿Guardar y finalizar la jornada?', [
             { text: 'Cancelar', style: 'cancel' },
             {
-              text: 'Cerrar',
+              text: 'Guardar',
               onPress: () => void cerrarJornada(),
             },
           ]);

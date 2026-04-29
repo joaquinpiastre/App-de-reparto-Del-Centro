@@ -18,6 +18,16 @@ const entregaSchema = z.object({
   notasRepartidor: z.string().optional(),
 });
 
+const cierreSchema = z.object({
+  jornadaId: z.string().min(3),
+  repartidorId: z.string().min(3),
+  repartidorNombre: z.string().min(2),
+  completados: z.number().int().min(0),
+  total: z.number().int().min(0),
+  minutosEnRuta: z.number().int().min(1),
+  fechaIso: z.string().optional(),
+});
+
 export const entregasRouter = Router();
 
 function requireAdmin(req: ReqWithUser, res: { status: (n: number) => { json: (b: unknown) => void } }): boolean {
@@ -28,6 +38,42 @@ function requireAdmin(req: ReqWithUser, res: { status: (n: number) => { json: (b
   return true;
 }
 
+async function ensureCierresTable(): Promise<void> {
+  await pool.query(
+    `create table if not exists cierres_jornada (
+      id uuid primary key default gen_random_uuid(),
+      jornada_id text not null,
+      repartidor_id text not null references repartidores(id),
+      repartidor_nombre text not null,
+      completados integer not null,
+      total integer not null,
+      minutos_en_ruta integer not null,
+      fecha_iso text,
+      created_at timestamptz not null default now()
+    )`
+  );
+}
+
+async function ensureRepartidorYJornada(
+  jornadaId: string,
+  repartidorId: string,
+  repartidorNombre?: string
+): Promise<void> {
+  const nombre = repartidorNombre?.trim() || repartidorId.replace(/^usr-/, 'Repartidor ');
+  await pool.query(
+    `insert into repartidores (id, nombre, rol, activo)
+     values ($1, $2, 'repartidor', true)
+     on conflict (id) do update set nombre = excluded.nombre, activo = true`,
+    [repartidorId, nombre]
+  );
+  await pool.query(
+    `insert into jornadas (id, repartidor_id, estado)
+     values ($1, $2, 'abierta')
+     on conflict (id) do nothing`,
+    [jornadaId, repartidorId]
+  );
+}
+
 entregasRouter.post('/entregas', requireAuth, async (req, res) => {
   const parsed = entregaSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -35,6 +81,7 @@ entregasRouter.post('/entregas', requireAuth, async (req, res) => {
     return;
   }
   const e = parsed.data;
+  await ensureRepartidorYJornada(e.jornadaId, e.repartidorId);
   const firmaUrl = e.firmaUrl ?? (e.firmaBase64 ? `data:image/png;base64,${e.firmaBase64}` : null);
 
   await pool.query(
@@ -57,31 +104,41 @@ entregasRouter.post('/entregas', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+entregasRouter.post('/cierres-jornada', requireAuth, async (req, res) => {
+  const parsed = cierreSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Payload inválido.' });
+    return;
+  }
+  const c = parsed.data;
+  await ensureCierresTable();
+  await ensureRepartidorYJornada(c.jornadaId, c.repartidorId, c.repartidorNombre);
+  await pool.query(
+    `insert into cierres_jornada
+     (jornada_id, repartidor_id, repartidor_nombre, completados, total, minutos_en_ruta, fecha_iso)
+     values ($1,$2,$3,$4,$5,$6,$7)`,
+    [c.jornadaId, c.repartidorId, c.repartidorNombre, c.completados, c.total, c.minutosEnRuta, c.fechaIso ?? null]
+  );
+  res.json({ ok: true });
+});
+
 entregasRouter.get('/admin-reportes/historial', requireAuth, async (req, res) => {
   if (!requireAdmin(req as ReqWithUser, res)) return;
-  const { rows } = await pool.query(
+  await ensureCierresTable();
+  const cierreRes = await pool.query(
     `select
-       e.jornada_id as id,
-       max(coalesce(e.hora_entrega_ms, extract(epoch from e.created_at) * 1000)) as fecha_ms,
-       max(r.nombre) as repartidor_nombre,
-       count(*) filter (where e.estado = 'entregado')::int as completados,
-       count(*)::int as total,
-       greatest(
-         1,
-         round(
-           (
-             max(coalesce(e.hora_entrega_ms, extract(epoch from e.created_at) * 1000))
-             - min(coalesce(e.hora_llegada_ms, e.hora_entrega_ms, extract(epoch from e.created_at) * 1000))
-           ) / 60000.0
-         )::int
-       ) as minutos_en_ruta
-     from entregas e
-     join repartidores r on r.id = e.repartidor_id
-     group by e.jornada_id
-     order by fecha_ms desc
+       cj.jornada_id as id,
+       coalesce(extract(epoch from cj.created_at) * 1000, extract(epoch from now()) * 1000) as fecha_ms,
+       cj.repartidor_nombre,
+       cj.completados,
+       cj.total,
+       cj.minutos_en_ruta
+     from cierres_jornada cj
+     order by cj.created_at desc
      limit 100`
   );
-  const historial = rows.map((x: {
+  const sourceRows = cierreRes.rows;
+  const historial = sourceRows.map((x: {
     id: string;
     fecha_ms: number;
     repartidor_nombre: string;
@@ -101,47 +158,34 @@ entregasRouter.get('/admin-reportes/historial', requireAuth, async (req, res) =>
 
 entregasRouter.get('/admin-reportes/stats', requireAuth, async (req, res) => {
   if (!requireAdmin(req as ReqWithUser, res)) return;
+  await ensureCierresTable();
 
   const [totalesRes, cierresRes, topRes] = await Promise.all([
     pool.query(
       `select
-         count(distinct jornada_id)::int as jornadas,
-         count(*) filter (where estado = 'entregado')::int as entregas,
-         count(*) filter (where estado = 'problema')::int as incidencias
-       from entregas`
-    ),
-    pool.query(
-      `with cierres as (
-         select
-           e.jornada_id as id,
-           max(coalesce(e.hora_entrega_ms, extract(epoch from e.created_at) * 1000)) as fecha_ms,
-           count(*) filter (where e.estado = 'entregado')::int as completados,
-           greatest(
-             1,
-             round(
-               (
-                 max(coalesce(e.hora_entrega_ms, extract(epoch from e.created_at) * 1000))
-                 - min(coalesce(e.hora_llegada_ms, e.hora_entrega_ms, extract(epoch from e.created_at) * 1000))
-               ) / 60000.0
-             )::int
-           ) as minutos_en_ruta
-         from entregas e
-         group by e.jornada_id
-         order by fecha_ms desc
-         limit 6
-       )
-       select * from cierres
-       order by fecha_ms asc`
+         count(*)::int as jornadas,
+         coalesce(sum(completados), 0)::int as entregas,
+         greatest(coalesce(sum(total - completados), 0), 0)::int as incidencias
+       from cierres_jornada`
     ),
     pool.query(
       `select
-         r.id,
-         r.nombre,
-         count(*) filter (where e.estado = 'entregado')::int as entregas
-       from entregas e
-       join repartidores r on r.id = e.repartidor_id
-       group by r.id, r.nombre
-       order by entregas desc, r.nombre asc
+         jornada_id as id,
+         extract(epoch from created_at) * 1000 as fecha_ms,
+         completados,
+         minutos_en_ruta
+       from cierres_jornada
+       order by created_at desc
+       limit 6`
+    ),
+    pool.query(
+      `select
+         cj.repartidor_id as id,
+         cj.repartidor_nombre as nombre,
+         coalesce(sum(cj.completados), 0)::int as entregas
+       from cierres_jornada cj
+       group by cj.repartidor_id, cj.repartidor_nombre
+       order by entregas desc, cj.repartidor_nombre asc
        limit 5`
     ),
   ]);

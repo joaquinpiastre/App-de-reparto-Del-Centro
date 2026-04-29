@@ -37,6 +37,13 @@ function normalizePedido(p: ApiListResponse['pedidos'][number]): PedidoAdmin {
   };
 }
 
+async function fetchPedidosDesdeApi(): Promise<PedidoAdmin[]> {
+  const data = await apiRequest<ApiListResponse>('/admin-pedidos');
+  const list = data.pedidos.map(normalizePedido);
+  useAdminPedidosStore.getState().reemplazarPedidosDesdeRemoto(list);
+  return list;
+}
+
 export async function crearPedidoAdmin(payload: Omit<PedidoAdmin, 'id' | 'creadoEn'>): Promise<PedidoAdmin> {
   const pedido: PedidoAdmin = {
     ...payload,
@@ -114,13 +121,18 @@ export async function obtenerRepartidoresDisponibles(): Promise<Usuario[]> {
   return data.repartidores;
 }
 
+export async function obtenerPedidosAdmin(): Promise<PedidoAdmin[]> {
+  if (API_ENABLED) {
+    return fetchPedidosDesdeApi();
+  }
+  return useAdminPedidosStore.getState().pedidos;
+}
+
 export function suscribirAdminPedidos(onChange: (list: PedidoAdmin[]) => void): () => void {
   if (API_ENABLED) {
     const load = async () => {
       try {
-        const data = await apiRequest<ApiListResponse>('/admin-pedidos');
-        const list = data.pedidos.map(normalizePedido);
-        useAdminPedidosStore.getState().reemplazarPedidosDesdeRemoto(list);
+        const list = await fetchPedidosDesdeApi();
         onChange(list);
       } catch {
         // Silencioso: evita ruido continuo en consola ante cortes de conectividad.
