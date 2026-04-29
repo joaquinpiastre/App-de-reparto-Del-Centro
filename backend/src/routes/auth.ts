@@ -43,7 +43,7 @@ authRouter.post('/auth/login', async (req, res) => {
   let nombre: string;
   let activo = true;
 
-  if (existente.rowCount > 0) {
+  if ((existente.rowCount ?? 0) > 0) {
     const row = existente.rows[0] as {
       nombre: string;
       rol: 'admin' | 'repartidor';

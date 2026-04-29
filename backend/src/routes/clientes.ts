@@ -12,6 +12,13 @@ const crearClienteSchema = z.object({
   pedido: z.string().trim().min(2),
 });
 
+const editarClienteSchema = z.object({
+  nombre: z.string().trim().min(2),
+  direccion: z.string().trim().min(4),
+  telefono: z.string().trim().min(6),
+  pedido: z.string().trim().min(2),
+});
+
 async function ensureClientesTable(): Promise<void> {
   await pool.query(
     `create table if not exists clientes (
@@ -63,4 +70,42 @@ clientesRouter.post('/clientes', requireAuth, async (req, res) => {
     [id, p.nombre, p.direccion, p.telefono, p.pedido]
   );
   res.json({ ok: true, cliente: { id, ...p } });
+});
+
+clientesRouter.patch('/clientes/:id', requireAuth, async (req, res) => {
+  if (!requireAdmin(req as ReqWithUser, res)) return;
+  const parsed = editarClienteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Payload inválido.' });
+    return;
+  }
+  await ensureClientesTable();
+  const p = parsed.data;
+  const up = await pool.query(
+    `update clientes
+     set nombre = $2, direccion = $3, telefono = $4, pedido = $5
+     where id = $1 and activo = true`,
+    [req.params.id, p.nombre, p.direccion, p.telefono, p.pedido]
+  );
+  if (up.rowCount === 0) {
+    res.status(404).json({ error: 'Cliente no encontrado.' });
+    return;
+  }
+  res.json({ ok: true, cliente: { id: req.params.id, ...p } });
+});
+
+clientesRouter.delete('/clientes/:id', requireAuth, async (req, res) => {
+  if (!requireAdmin(req as ReqWithUser, res)) return;
+  await ensureClientesTable();
+  const del = await pool.query(
+    `update clientes
+     set activo = false
+     where id = $1 and activo = true`,
+    [req.params.id]
+  );
+  if (del.rowCount === 0) {
+    res.status(404).json({ error: 'Cliente no encontrado.' });
+    return;
+  }
+  res.json({ ok: true });
 });

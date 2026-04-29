@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Screen } from '@/components/ui/Screen';
 import { Button } from '@/components/ui/Button';
 import { COLORS } from '@/constants/colors';
 import {
+  actualizarClienteAdmin,
   crearClienteAdmin,
+  eliminarClienteAdmin,
   listarClientesAdmin,
   type ClienteAdminCatalogo,
 } from '@/services/adminClientes';
@@ -18,6 +20,7 @@ export default function Clientes() {
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [nombre, setNombre] = useState('');
   const [direccion, setDireccion] = useState('');
   const [telefono, setTelefono] = useState('');
@@ -51,6 +54,15 @@ export default function Clientes() {
     );
   }, [q, clientes]);
 
+  const resetForm = () => {
+    setEditingId(null);
+    setNombre('');
+    setDireccion('');
+    setTelefono('');
+    setPedido('');
+    setShowForm(false);
+  };
+
   const guardarCliente = async () => {
     const payload = {
       nombre: nombre.trim(),
@@ -66,19 +78,45 @@ export default function Clientes() {
       setGuardando(true);
       setError(null);
       setOk(null);
-      await crearClienteAdmin(payload);
-      setNombre('');
-      setDireccion('');
-      setTelefono('');
-      setPedido('');
-      setShowForm(false);
-      setOk('Cliente agregado correctamente.');
+      if (editingId) {
+        await actualizarClienteAdmin(editingId, payload);
+        setOk('Cliente actualizado correctamente.');
+      } else {
+        await crearClienteAdmin(payload);
+        setOk('Cliente agregado correctamente.');
+      }
+      resetForm();
       await cargar();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo agregar el cliente.');
+      setError(e instanceof Error ? e.message : 'No se pudo guardar el cliente.');
     } finally {
       setGuardando(false);
     }
+  };
+
+  const confirmarEliminar = (cliente: ClienteAdminCatalogo) => {
+    Alert.alert('Eliminar cliente', `¿Eliminar a ${cliente.nombre}?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            try {
+              setGuardando(true);
+              setError(null);
+              await eliminarClienteAdmin(cliente.id);
+              setOk('Cliente eliminado.');
+              await cargar();
+            } catch (e) {
+              setError(e instanceof Error ? e.message : 'No se pudo eliminar el cliente.');
+            } finally {
+              setGuardando(false);
+            }
+          })();
+        },
+      },
+    ]);
   };
 
   return (
@@ -102,7 +140,7 @@ export default function Clientes() {
       />
       {showForm ? (
         <View style={styles.card}>
-          <Text style={styles.title}>Nuevo cliente</Text>
+          <Text style={styles.title}>{editingId ? 'Editar cliente' : 'Nuevo cliente'}</Text>
           <TextInput
             style={styles.input}
             placeholder="Nombre"
@@ -133,14 +171,14 @@ export default function Clientes() {
           />
           <View style={styles.actions}>
             <Button
-              label={guardando ? 'GUARDANDO…' : 'GUARDAR CLIENTE'}
+              label={guardando ? 'GUARDANDO…' : editingId ? 'GUARDAR CAMBIOS' : 'GUARDAR CLIENTE'}
               loading={guardando}
               onPress={() => void guardarCliente()}
             />
             <Button
               label="CANCELAR"
               variant="secondary"
-              onPress={() => setShowForm(false)}
+              onPress={resetForm}
             />
           </View>
         </View>
@@ -161,6 +199,25 @@ export default function Clientes() {
               {item.direccion} · {item.telefono}
             </Text>
             <Text style={styles.row}>Pedido típico: {item.pedido}</Text>
+            <View style={styles.actions}>
+              <Button
+                label="Editar"
+                variant="secondary"
+                onPress={() => {
+                  setEditingId(item.id);
+                  setNombre(item.nombre);
+                  setDireccion(item.direccion);
+                  setTelefono(item.telefono);
+                  setPedido(item.pedido);
+                  setShowForm(true);
+                }}
+              />
+              <Button
+                label="Eliminar"
+                variant="danger"
+                onPress={() => confirmarEliminar(item)}
+              />
+            </View>
           </View>
         )}
       />

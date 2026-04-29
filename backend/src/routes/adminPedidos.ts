@@ -164,7 +164,7 @@ adminPedidosRouter.delete('/repartidores/:id', requireAuth, async (req, res) => 
     pool.query(`select 1 from pedidos_admin where repartidor_id = $1 limit 1`, [id]),
     pool.query(`select 1 from entregas where repartidor_id = $1 limit 1`, [id]),
   ]);
-  const tieneHistorial = checks.some((r) => r.rowCount > 0);
+  const tieneHistorial = checks.some((r) => (r.rowCount ?? 0) > 0);
   if (tieneHistorial) {
     const up = await pool.query(
       `update repartidores

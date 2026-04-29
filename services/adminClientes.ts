@@ -43,3 +43,28 @@ export async function crearClienteAdmin(
   });
   return data.cliente;
 }
+
+export async function actualizarClienteAdmin(
+  id: string,
+  payload: Omit<ClienteAdminCatalogo, 'id'>
+): Promise<ClienteAdminCatalogo> {
+  if (!API_ENABLED) {
+    clientesLocales = clientesLocales.map((c) => (c.id === id ? { ...c, ...payload } : c));
+    const up = clientesLocales.find((c) => c.id === id);
+    if (!up) throw new Error('Cliente no encontrado.');
+    return up;
+  }
+  const data = await apiRequest<{ cliente: ClienteAdminCatalogo }>(`/clientes/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  return data.cliente;
+}
+
+export async function eliminarClienteAdmin(id: string): Promise<void> {
+  if (!API_ENABLED) {
+    clientesLocales = clientesLocales.filter((c) => c.id !== id);
+    return;
+  }
+  await apiRequest(`/clientes/${id}`, { method: 'DELETE' });
+}
