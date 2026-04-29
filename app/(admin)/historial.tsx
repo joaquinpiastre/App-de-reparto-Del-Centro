@@ -190,16 +190,28 @@ export default function Historial() {
           {pedidosJornada.map((p) => (
             <View key={p.id} style={styles.subCard}>
               <Text style={styles.title}>{p.titulo}</Text>
+              <Text style={styles.row}>ID pedido: {p.id}</Text>
               <Text style={styles.row}>
                 Estado: {p.estado} · Total: ${Number(p.total ?? 0).toFixed(2)}
+              </Text>
+              <Text style={styles.row}>
+                Repartidor: {p.repartidorNombre || '-'} ({p.repartidorId || '-'})
+              </Text>
+              <Text style={styles.row}>
+                Creado: {p.creadoEn ? new Date(Number(p.creadoEn)).toLocaleString('es-AR') : '-'}
+              </Text>
+              <Text style={styles.row}>
+                Creado por: {p.creadoPorNombre || '-'} ({p.creadoPorId || '-'})
               </Text>
               <Text style={styles.row}>
                 Calles:{' '}
                 {Array.isArray(p.calles) ? p.calles.join(', ') : String(p.calles ?? '').trim() || '-'}
               </Text>
+              <Text style={styles.row}>Notas: {p.notas?.trim() || 'Sin notas'}</Text>
+              <Text style={styles.row}>Items:</Text>
               {p.items?.map((it, idx) => (
                 <Text key={`${p.id}-${idx}`} style={styles.row}>
-                  · {Number(it.cantidad ?? 0)} x {it.descripcion} (${Number(it.subtotal ?? 0).toFixed(2)})
+                  · {Number(it.cantidad ?? 0)} x {it.descripcion} · Unit ${Number(it.precioUnitario ?? 0).toFixed(2)} · Subtotal ${Number(it.subtotal ?? 0).toFixed(2)}
                 </Text>
               ))}
             </View>
