@@ -6,24 +6,31 @@ import { pool } from '../db/client.js';
 type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' } };
 const DEMO_PIN = process.env.DEMO_PIN ?? '1234';
 
+function zodErrorMessage(err: z.ZodError): string {
+  const i = err.issues[0];
+  if (!i) return 'Payload inválido.';
+  const path = i.path.length ? `${i.path.join('.')}: ` : '';
+  return `${path}${i.message}`;
+}
+
 const itemSchema = z.object({
   descripcion: z.string().min(1),
-  cantidad: z.number().int().positive(),
-  precioUnitario: z.number(),
-  subtotal: z.number(),
+  cantidad: z.coerce.number().int().positive(),
+  precioUnitario: z.coerce.number(),
+  subtotal: z.coerce.number(),
 });
 
 const pedidoAdminSchema = z.object({
   id: z.string().min(3),
-  titulo: z.string().min(3),
-  calles: z.array(z.string().min(2)).min(1),
+  titulo: z.string().trim().min(1).max(500),
+  calles: z.array(z.string().trim().min(1)).min(1),
   repartidorId: z.string().min(3),
   repartidorNombre: z.string().min(2),
   items: z.array(itemSchema).min(1),
-  total: z.number(),
+  total: z.coerce.number(),
   notas: z.string().optional(),
   estado: z.enum(['pendiente', 'asignado', 'en_ruta', 'entregado', 'cancelado']).default('pendiente'),
-  creadoEn: z.number().int().positive(),
+  creadoEn: z.coerce.number().int().positive(),
   creadoPorId: z.string().optional(),
   creadoPorNombre: z.string().optional(),
 });
@@ -34,10 +41,10 @@ const estadoSchema = z.object({
 });
 
 const editarPedidoSchema = z.object({
-  titulo: z.string().min(3),
-  calles: z.array(z.string().min(2)).min(1),
+  titulo: z.string().trim().min(1).max(500),
+  calles: z.array(z.string().trim().min(1)).min(1),
   items: z.array(itemSchema).min(1),
-  total: z.number(),
+  total: z.coerce.number(),
   notas: z.string().optional(),
 });
 
@@ -109,7 +116,7 @@ adminPedidosRouter.post('/repartidores', requireAuth, async (req, res) => {
   await ensurePinColumn();
   const parsed = crearRepartidorSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: 'Payload inválido.' });
+    res.status(400).json({ error: zodErrorMessage(parsed.error) });
     return;
   }
   const usuario = parsed.data.usuario.toLowerCase();
@@ -135,7 +142,7 @@ adminPedidosRouter.patch('/repartidores/:id', requireAuth, async (req, res) => {
   await ensurePinColumn();
   const parsed = editarRepartidorSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: 'Payload inválido.' });
+    res.status(400).json({ error: zodErrorMessage(parsed.error) });
     return;
   }
   const current = await pool.query(
@@ -221,7 +228,7 @@ adminPedidosRouter.post('/admin-pedidos', requireAuth, async (req, res) => {
   await ensurePedidosAdminJornadaColumn();
   const parsed = pedidoAdminSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: 'Payload inválido.' });
+    res.status(400).json({ error: zodErrorMessage(parsed.error) });
     return;
   }
   const p = parsed.data;
@@ -282,7 +289,7 @@ adminPedidosRouter.patch('/admin-pedidos/:id/estado', requireAuth, async (req, r
   await ensurePedidosAdminJornadaColumn();
   const parsed = estadoSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: 'Payload inválido.' });
+    res.status(400).json({ error: zodErrorMessage(parsed.error) });
     return;
   }
   const jornadaId =
@@ -306,7 +313,7 @@ adminPedidosRouter.patch('/admin-pedidos/:id/estado', requireAuth, async (req, r
 adminPedidosRouter.patch('/admin-pedidos/:id/asignar', requireAuth, async (req, res) => {
   const parsed = asignacionSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: 'Payload inválido.' });
+    res.status(400).json({ error: zodErrorMessage(parsed.error) });
     return;
   }
   const { repartidorId, repartidorNombre } = parsed.data;
@@ -328,7 +335,7 @@ adminPedidosRouter.patch('/admin-pedidos/:id/asignar', requireAuth, async (req, 
 adminPedidosRouter.patch('/admin-pedidos/:id', requireAuth, async (req, res) => {
   const parsed = editarPedidoSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: 'Payload inválido.' });
+    res.status(400).json({ error: zodErrorMessage(parsed.error) });
     return;
   }
   const p = parsed.data;
