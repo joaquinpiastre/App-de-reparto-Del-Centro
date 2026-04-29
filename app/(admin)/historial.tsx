@@ -15,6 +15,20 @@ import {
 } from '@/services/adminReportes';
 import type { CierreJornadaResumen } from '@/store/useHistorialStore';
 
+function normalizeMediaUri(value?: string | null): string | null {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (raw.startsWith('data:image/') && raw.includes(';base64,')) {
+    const dupMarker = raw.indexOf('data:image/', 20);
+    return dupMarker > 0 ? raw.slice(dupMarker) : raw;
+  }
+  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('file://')) {
+    return raw;
+  }
+  return null;
+}
+
 export default function Historial() {
   const [cierres, setCierres] = useState<CierreJornadaResumen[]>([]);
   const [seleccionado, setSeleccionado] = useState<CierreJornadaResumen | null>(null);
@@ -145,20 +159,26 @@ export default function Historial() {
               <Text style={styles.row}>
                 {c.completados}/{c.total} entregas · {c.minutosEnRuta} min en ruta
               </Text>
-              <View style={styles.topRow}>
-                <Button label="Ver recorrido" variant="secondary" onPress={() => setSeleccionado(c)} />
-                <Button
-                  label={loadingPedidos && seleccionado?.id === c.id ? 'CARGANDO PEDIDOS…' : 'Ver pedidos'}
-                  variant="secondary"
-                  loading={loadingPedidos && seleccionado?.id === c.id}
-                  onPress={() => void verPedidos(c.id)}
-                />
-                <Button
-                  label={loadingEntregas && seleccionado?.id === c.id ? 'CARGANDO ENTREGAS…' : 'Ver entregas'}
-                  variant="secondary"
-                  loading={loadingEntregas && seleccionado?.id === c.id}
-                  onPress={() => void verEntregas(c.id)}
-                />
+              <View style={styles.actionRow}>
+                <View style={styles.actionBtn}>
+                  <Button label="Ver recorrido" variant="secondary" onPress={() => setSeleccionado(c)} />
+                </View>
+                <View style={styles.actionBtn}>
+                  <Button
+                    label={loadingPedidos && seleccionado?.id === c.id ? 'Cargando pedidos…' : 'Ver pedidos'}
+                    variant="secondary"
+                    loading={loadingPedidos && seleccionado?.id === c.id}
+                    onPress={() => void verPedidos(c.id)}
+                  />
+                </View>
+                <View style={styles.actionBtn}>
+                  <Button
+                    label={loadingEntregas && seleccionado?.id === c.id ? 'Cargando entregas…' : 'Ver entregas'}
+                    variant="secondary"
+                    loading={loadingEntregas && seleccionado?.id === c.id}
+                    onPress={() => void verEntregas(c.id)}
+                  />
+                </View>
               </View>
             </View>
           )}
@@ -191,6 +211,11 @@ export default function Historial() {
           <Text style={styles.title}>Entregas completas del turno seleccionado</Text>
           {entregasJornada.map((e) => (
             <View key={e.id} style={styles.subCard}>
+              {(() => {
+                const fotoUri = normalizeMediaUri(e.fotoUrl);
+                const firmaUri = normalizeMediaUri(e.firmaUrl);
+                return (
+                  <>
               <Text style={styles.title}>
                 Cliente {e.clienteId} · {e.estado}
               </Text>
@@ -202,18 +227,25 @@ export default function Historial() {
                 <Text style={styles.row}>Tiempo parada: {Math.max(0, Math.round(e.tiempoParadaSegundos / 60))} min</Text>
               ) : null}
               {e.notasRepartidor ? <Text style={styles.row}>Nota: {e.notasRepartidor}</Text> : null}
-              {e.fotoUrl ? (
+              {fotoUri ? (
                 <View style={styles.mediaBlock}>
                   <Text style={styles.row}>Foto de entrega</Text>
-                  <Image source={{ uri: e.fotoUrl }} style={styles.media} resizeMode="cover" />
+                  <Image source={{ uri: fotoUri }} style={styles.media} resizeMode="cover" />
                 </View>
-              ) : null}
-              {e.firmaUrl ? (
+              ) : (
+                <Text style={styles.row}>Foto no disponible para esta entrega.</Text>
+              )}
+              {firmaUri ? (
                 <View style={styles.mediaBlock}>
                   <Text style={styles.row}>Firma cliente</Text>
-                  <Image source={{ uri: e.firmaUrl }} style={styles.media} resizeMode="contain" />
+                  <Image source={{ uri: firmaUri }} style={styles.media} resizeMode="contain" />
                 </View>
-              ) : null}
+              ) : (
+                <Text style={styles.row}>Firma no disponible para esta entrega.</Text>
+              )}
+                  </>
+                );
+              })()}
             </View>
           ))}
         </View>
@@ -223,6 +255,8 @@ export default function Historial() {
 }
 const styles = StyleSheet.create({
   topRow: { alignItems: 'flex-start' },
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  actionBtn: { minWidth: 150, flex: 1 },
   card: { backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 10 },
   subCard: { backgroundColor: '#f9f9f9', borderRadius: 12, padding: 10, marginTop: 8 },
   mediaBlock: { marginTop: 8 },

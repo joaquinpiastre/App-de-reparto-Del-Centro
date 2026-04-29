@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -55,6 +56,7 @@ export default function PedidoCalleScreen() {
   const [enviando, setEnviando] = useState(false);
   const [syncCatalogo, setSyncCatalogo] = useState(false);
   const [catalogoMsg, setCatalogoMsg] = useState('');
+  const [mostrarListaCompleta, setMostrarListaCompleta] = useState(false);
 
   const misPedidos = useMemo(() => {
     if (!usuario?.id) return [];
@@ -94,6 +96,7 @@ export default function PedidoCalleScreen() {
       .slice(0, 40);
   }, [productos, busqueda]);
   const coincidencias = useMemo(() => filtrados.slice(0, 8), [filtrados]);
+  const sugerenciasExpandibles = useMemo(() => filtrados.slice(0, 20), [filtrados]);
 
   const clientesMismaCalle = useMemo(() => {
     if (!calleRef.trim()) return [];
@@ -268,24 +271,27 @@ export default function PedidoCalleScreen() {
       />
       {busqueda.trim().length > 0 ? (
         <View style={styles.sugerenciasBox}>
-          {coincidencias.length === 0 ? (
+          <Text style={styles.metaStrong}>Coincidencias en catálogo</Text>
+          {sugerenciasExpandibles.length === 0 ? (
             <Text style={styles.meta}>Sin coincidencias.</Text>
           ) : (
-            coincidencias.map((item) => (
-              <Pressable
-                key={`sug-${item.codigo}-${item.descripcion}`}
-                style={styles.sugerenciaRow}
-                onPress={() => {
-                  agregarProducto(item);
-                  setBusqueda('');
-                }}
-              >
-                <Text style={styles.prodTit}>{item.descripcion}</Text>
-                <Text style={styles.prodSub}>
-                  {item.codigo} · ${fmtMoney(item.precioUnitario)}
-                </Text>
-              </Pressable>
-            ))
+            <ScrollView style={styles.sugerenciasScroll} nestedScrollEnabled>
+              {sugerenciasExpandibles.map((item) => (
+                <Pressable
+                  key={`sug-${item.codigo}-${item.descripcion}`}
+                  style={styles.sugerenciaRow}
+                  onPress={() => {
+                    agregarProducto(item);
+                    setBusqueda('');
+                  }}
+                >
+                  <Text style={styles.prodTit}>{item.descripcion}</Text>
+                  <Text style={styles.prodSub}>
+                    {item.codigo} · ${fmtMoney(item.precioUnitario)}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
           )}
         </View>
       ) : null}
@@ -300,26 +306,35 @@ export default function PedidoCalleScreen() {
         keyboardType="number-pad"
       />
 
-      <FlatList
-        data={filtrados}
-        keyExtractor={(item) => item.codigo + item.descripcion}
-        style={styles.lista}
-        nestedScrollEnabled
-        renderItem={({ item }) => (
-          <View style={styles.prodRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.prodTit}>{item.descripcion}</Text>
-              <Text style={styles.prodSub}>
-                {item.codigo} · ${fmtMoney(item.precioUnitario)}
-              </Text>
+      <View style={styles.topActions}>
+        <Button
+          label={mostrarListaCompleta ? 'OCULTAR LISTA COMPLETA' : 'VER LISTA COMPLETA'}
+          variant="secondary"
+          onPress={() => setMostrarListaCompleta((v) => !v)}
+        />
+      </View>
+      {mostrarListaCompleta ? (
+        <FlatList
+          data={filtrados}
+          keyExtractor={(item) => item.codigo + item.descripcion}
+          style={styles.lista}
+          nestedScrollEnabled
+          renderItem={({ item }) => (
+            <View style={styles.prodRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.prodTit}>{item.descripcion}</Text>
+                <Text style={styles.prodSub}>
+                  {item.codigo} · ${fmtMoney(item.precioUnitario)}
+                </Text>
+              </View>
+              <Button label="Agregar" onPress={() => agregarProducto(item)} />
             </View>
-            <Button label="Agregar" onPress={() => agregarProducto(item)} />
-          </View>
-        )}
-        ListEmptyComponent={
-          <Text style={styles.meta}>Importá un Excel o ajustá la búsqueda.</Text>
-        }
-      />
+          )}
+          ListEmptyComponent={
+            <Text style={styles.meta}>Importá un Excel o ajustá la búsqueda.</Text>
+          }
+        />
+      ) : null}
 
       <Text style={styles.label}>Ítems del pedido</Text>
       {lineas.length === 0 ? (
@@ -395,8 +410,10 @@ const styles = StyleSheet.create({
     borderColor: '#dfe6dc',
     borderRadius: 12,
     marginTop: 6,
-    paddingVertical: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
   },
+  sugerenciasScroll: { maxHeight: 220 },
   sugerenciaRow: {
     paddingHorizontal: 12,
     paddingVertical: 9,
@@ -413,6 +430,7 @@ const styles = StyleSheet.create({
   },
   calleTitle: { fontFamily: 'Poppins_700Bold', color: COLORS.verdeOscuro, fontSize: 14 },
   calleRow: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto, fontSize: 13 },
+  topActions: { marginTop: 8 },
   lista: { maxHeight: 260, marginTop: 8 },
   prodRow: {
     flexDirection: 'row',

@@ -111,6 +111,18 @@ export default function PedidosCalleAdmin() {
         .sort((a, b) => b.creadoEn - a.creadoEn),
     [pedidosCalle]
   );
+  const pedidosPendientes = useMemo(
+    () => pedidosCalleActivos.filter((p) => p.estado === 'pendiente'),
+    [pedidosCalleActivos]
+  );
+  const pedidosVistos = useMemo(
+    () => pedidosCalleActivos.filter((p) => p.estado === 'visto'),
+    [pedidosCalleActivos]
+  );
+  const pedidosArmados = useMemo(
+    () => pedidosCalleActivos.filter((p) => p.estado === 'armado'),
+    [pedidosCalleActivos]
+  );
 
   useEffect(() => {
     (async () => {
@@ -356,6 +368,10 @@ export default function PedidosCalleAdmin() {
 
       <View style={styles.card}>
         <Text style={styles.label}>Pedidos de calle (en preparación)</Text>
+        <Text style={styles.row}>
+          Pendientes: {pedidosPendientes.length} · Vistos: {pedidosVistos.length} · Armados:{' '}
+          {pedidosArmados.length}
+        </Text>
         {pedidosCalleActivos.length === 0 ? (
           <Text style={styles.empty}>No hay pedidos de calle activos.</Text>
         ) : (
@@ -367,6 +383,12 @@ export default function PedidosCalleAdmin() {
               <Text style={styles.row}>
                 Estado: {p.estado} · Total ${p.total.toFixed(2)}
               </Text>
+              {p.items.map((it, idx) => (
+                <Text key={`${p.id}-it-${idx}`} style={styles.itemLine}>
+                  {it.cantidad} × {it.descripcion} (${it.subtotal.toFixed(2)})
+                </Text>
+              ))}
+              {p.notas ? <Text style={styles.notas}>Nota repartidor: {p.notas}</Text> : null}
               <View style={styles.actions}>
                 <Button
                   label="VISTO"
@@ -377,6 +399,11 @@ export default function PedidosCalleAdmin() {
                   label="ARMADO"
                   variant="primary"
                   onPress={() => void cambiarEstadoPedidoCalle(p, 'armado')}
+                />
+                <Button
+                  label="RETIRADO"
+                  variant="warning"
+                  onPress={() => void cambiarEstadoPedidoCalle(p, 'retirado')}
                 />
                 <Button
                   label="CANCELAR"

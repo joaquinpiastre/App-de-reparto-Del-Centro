@@ -38,6 +38,25 @@ function requireAdmin(req: ReqWithUser, res: { status: (n: number) => { json: (b
   return true;
 }
 
+function normalizeImagePayload(value?: string | null, mime = 'image/png'): string | null {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (raw.startsWith('data:image/') && raw.includes(';base64,')) {
+    // Corrige payloads duplicados: data:image/...;base64,data:image/...;base64,AAA...
+    const dupMarker = raw.indexOf('data:image/', 20);
+    if (dupMarker > 0) {
+      return raw.slice(dupMarker);
+    }
+    return raw;
+  }
+  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('file://')) {
+    return raw;
+  }
+  const sanitized = raw.replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
+  return `data:${mime};base64,${sanitized}`;
+}
+
 async function ensureCierresTable(): Promise<void> {
   await pool.query(
     `create table if not exists cierres_jornada (
@@ -82,7 +101,8 @@ entregasRouter.post('/entregas', requireAuth, async (req, res) => {
   }
   const e = parsed.data;
   await ensureRepartidorYJornada(e.jornadaId, e.repartidorId);
-  const firmaUrl = e.firmaUrl ?? (e.firmaBase64 ? `data:image/png;base64,${e.firmaBase64}` : null);
+  const firmaUrl = normalizeImagePayload(e.firmaUrl ?? e.firmaBase64 ?? null, 'image/png');
+  const fotoUrl = normalizeImagePayload(e.fotoUrl ?? null, 'image/jpeg');
 
   await pool.query(
     `insert into entregas
@@ -96,7 +116,7 @@ entregasRouter.post('/entregas', requireAuth, async (req, res) => {
       e.horaLlegada ?? null,
       e.horaEntrega ?? null,
       e.tiempoParadaSegundos ?? null,
-      e.fotoUrl ?? null,
+      fotoUrl,
       firmaUrl,
       e.notasRepartidor ?? null,
     ]
