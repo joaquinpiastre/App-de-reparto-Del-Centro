@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { signToken } from '../auth.js';
+import { requireAuth, signToken } from '../auth.js';
 import { pool } from '../db/client.js';
 
 const loginSchema = z.object({
@@ -81,5 +81,32 @@ authRouter.post('/auth/login', async (req, res) => {
   res.json({
     token,
     usuario: { id, nombre, rol, activo },
+  });
+});
+
+authRouter.get('/auth/me', requireAuth, async (req, res) => {
+  await ensurePinColumn();
+  const user = (req as { user?: { sub: string; nombre: string; rol: 'admin' | 'repartidor' } }).user;
+  if (!user?.sub) {
+    res.status(401).json({ error: 'Token inválido.' });
+    return;
+  }
+  const db = await pool.query(
+    `select id, nombre, rol, activo
+     from repartidores
+     where id = $1`,
+    [user.sub]
+  );
+  if ((db.rowCount ?? 0) > 0) {
+    const row = db.rows[0] as { id: string; nombre: string; rol: 'admin' | 'repartidor'; activo: boolean };
+    if (!row.activo) {
+      res.status(403).json({ error: 'Usuario inactivo.' });
+      return;
+    }
+    res.json({ usuario: row });
+    return;
+  }
+  res.json({
+    usuario: { id: user.sub, nombre: user.nombre, rol: user.rol, activo: true },
   });
 });

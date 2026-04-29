@@ -1,6 +1,6 @@
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Poppins_400Regular,
   Poppins_600SemiBold,
@@ -15,6 +15,8 @@ import { Platform, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { inicializarNotificaciones } from '@/services/notificaciones';
+import { restaurarSesionApi } from '@/services/authApi';
+import { useAppStore } from '@/store/useAppStore';
 
 /**
  * Navegación raíz:
@@ -29,11 +31,26 @@ const WebStack = ExpoStack;
 
 export default function RootLayout() {
   const ocultoSplash = useRef(false);
+  const [sesionLista, setSesionLista] = useState(false);
+  const setUsuario = useAppStore((s) => s.setUsuario);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
     void inicializarNotificaciones();
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    void (async () => {
+      const user = await restaurarSesionApi();
+      if (!mounted) return;
+      setUsuario(user);
+      setSesionLista(true);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [setUsuario]);
 
   const [fontsLoaded, fontError] = useFonts({
     Poppins_400Regular,
@@ -67,6 +84,8 @@ export default function RootLayout() {
   const RootNav = Platform.OS === 'web' ? WebStack : JsStack;
   const stackExtras =
     Platform.OS !== 'web' && stackRouterOverride ? { UNSTABLE_router: stackRouterOverride } : {};
+
+  if (!sesionLista) return null;
 
   return (
     <GestureHandlerRootView
