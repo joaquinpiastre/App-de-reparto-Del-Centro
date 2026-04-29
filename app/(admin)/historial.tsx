@@ -1,10 +1,18 @@
 import { useEffect, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Image, StyleSheet, Text, View } from 'react-native';
 
 import { MapaRecorridoHistorial } from '@/components/mapa/MapaRecorridoHistorial';
 import { Screen } from '@/components/ui/Screen';
 import { Button } from '@/components/ui/Button';
-import { obtenerHistorialAdmin, obtenerRecorridoJornadaAdmin, type RecorridoJornadaResponse } from '@/services/adminReportes';
+import {
+  obtenerHistorialAdmin,
+  obtenerEntregasJornadaAdmin,
+  obtenerPedidosJornadaAdmin,
+  type EntregaJornadaHistorial,
+  obtenerRecorridoJornadaAdmin,
+  type PedidoJornadaHistorial,
+  type RecorridoJornadaResponse,
+} from '@/services/adminReportes';
 import type { CierreJornadaResumen } from '@/store/useHistorialStore';
 
 export default function Historial() {
@@ -13,6 +21,10 @@ export default function Historial() {
   const [recorrido, setRecorrido] = useState<RecorridoJornadaResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingRecorrido, setLoadingRecorrido] = useState(false);
+  const [loadingPedidos, setLoadingPedidos] = useState(false);
+  const [loadingEntregas, setLoadingEntregas] = useState(false);
+  const [pedidosJornada, setPedidosJornada] = useState<PedidoJornadaHistorial[]>([]);
+  const [entregasJornada, setEntregasJornada] = useState<EntregaJornadaHistorial[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const cargar = async () => {
@@ -49,6 +61,30 @@ export default function Historial() {
       }
     })();
   }, [seleccionado?.id]);
+
+  const verPedidos = async (jornadaId: string) => {
+    try {
+      setLoadingPedidos(true);
+      const pedidos = await obtenerPedidosJornadaAdmin(jornadaId);
+      setPedidosJornada(pedidos);
+    } catch {
+      setPedidosJornada([]);
+    } finally {
+      setLoadingPedidos(false);
+    }
+  };
+
+  const verEntregas = async (jornadaId: string) => {
+    try {
+      setLoadingEntregas(true);
+      const entregas = await obtenerEntregasJornadaAdmin(jornadaId);
+      setEntregasJornada(entregas);
+    } catch {
+      setEntregasJornada([]);
+    } finally {
+      setLoadingEntregas(false);
+    }
+  };
 
   return (
     <Screen title="Historial de rutas" subtitle="Cierres de jornada registrados en backend">
@@ -111,17 +147,86 @@ export default function Historial() {
               </Text>
               <View style={styles.topRow}>
                 <Button label="Ver recorrido" variant="secondary" onPress={() => setSeleccionado(c)} />
+                <Button
+                  label={loadingPedidos && seleccionado?.id === c.id ? 'CARGANDO PEDIDOS…' : 'Ver pedidos'}
+                  variant="secondary"
+                  loading={loadingPedidos && seleccionado?.id === c.id}
+                  onPress={() => void verPedidos(c.id)}
+                />
+                <Button
+                  label={loadingEntregas && seleccionado?.id === c.id ? 'CARGANDO ENTREGAS…' : 'Ver entregas'}
+                  variant="secondary"
+                  loading={loadingEntregas && seleccionado?.id === c.id}
+                  onPress={() => void verEntregas(c.id)}
+                />
               </View>
             </View>
           )}
         />
       )}
+      {pedidosJornada.length > 0 ? (
+        <View style={styles.card}>
+          <Text style={styles.title}>Pedidos del turno seleccionado</Text>
+          {pedidosJornada.map((p) => (
+            <View key={p.id} style={styles.subCard}>
+              <Text style={styles.title}>{p.titulo}</Text>
+              <Text style={styles.row}>
+                Estado: {p.estado} · Total: ${Number(p.total ?? 0).toFixed(2)}
+              </Text>
+              <Text style={styles.row}>
+                Calles:{' '}
+                {Array.isArray(p.calles) ? p.calles.join(', ') : String(p.calles ?? '').trim() || '-'}
+              </Text>
+              {p.items?.map((it, idx) => (
+                <Text key={`${p.id}-${idx}`} style={styles.row}>
+                  · {Number(it.cantidad ?? 0)} x {it.descripcion} (${Number(it.subtotal ?? 0).toFixed(2)})
+                </Text>
+              ))}
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {entregasJornada.length > 0 ? (
+        <View style={styles.card}>
+          <Text style={styles.title}>Entregas completas del turno seleccionado</Text>
+          {entregasJornada.map((e) => (
+            <View key={e.id} style={styles.subCard}>
+              <Text style={styles.title}>
+                Cliente {e.clienteId} · {e.estado}
+              </Text>
+              <Text style={styles.row}>
+                Hora:{' '}
+                {e.timestampMs ? new Date(Number(e.timestampMs)).toLocaleString('es-AR') : 'Sin horario'}
+              </Text>
+              {typeof e.tiempoParadaSegundos === 'number' ? (
+                <Text style={styles.row}>Tiempo parada: {Math.max(0, Math.round(e.tiempoParadaSegundos / 60))} min</Text>
+              ) : null}
+              {e.notasRepartidor ? <Text style={styles.row}>Nota: {e.notasRepartidor}</Text> : null}
+              {e.fotoUrl ? (
+                <View style={styles.mediaBlock}>
+                  <Text style={styles.row}>Foto de entrega</Text>
+                  <Image source={{ uri: e.fotoUrl }} style={styles.media} resizeMode="cover" />
+                </View>
+              ) : null}
+              {e.firmaUrl ? (
+                <View style={styles.mediaBlock}>
+                  <Text style={styles.row}>Firma cliente</Text>
+                  <Image source={{ uri: e.firmaUrl }} style={styles.media} resizeMode="contain" />
+                </View>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
     </Screen>
   );
 }
 const styles = StyleSheet.create({
   topRow: { alignItems: 'flex-start' },
   card: { backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 10 },
+  subCard: { backgroundColor: '#f9f9f9', borderRadius: 12, padding: 10, marginTop: 8 },
+  mediaBlock: { marginTop: 8 },
+  media: { width: '100%', height: 180, borderRadius: 10, backgroundColor: '#eef2f5' },
   errorCard: { borderWidth: 1, borderColor: '#e06a6a', backgroundColor: '#fff3f3' },
   title: { fontFamily: 'Poppins_700Bold' },
   row: { fontFamily: 'Poppins_400Regular', marginTop: 4 },

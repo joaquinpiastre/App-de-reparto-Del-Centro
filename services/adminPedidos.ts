@@ -62,13 +62,14 @@ export async function crearPedidoAdmin(payload: Omit<PedidoAdmin, 'id' | 'creado
 
 export async function actualizarEstadoPedidoAdmin(
   id: string,
-  estado: EstadoPedidoAdmin
+  estado: EstadoPedidoAdmin,
+  opts?: { jornadaId?: string }
 ): Promise<void> {
   useAdminPedidosStore.getState().marcarEstado(id, estado);
   if (!API_ENABLED) return;
   await apiRequest(`/admin-pedidos/${id}/estado`, {
     method: 'PATCH',
-    body: JSON.stringify({ estado }),
+    body: JSON.stringify({ estado, jornadaId: opts?.jornadaId }),
   });
 }
 

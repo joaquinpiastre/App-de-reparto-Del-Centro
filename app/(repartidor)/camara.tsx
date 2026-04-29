@@ -27,9 +27,14 @@ export default function Camara() {
   const capturar = async () => {
     try {
       setCargando(true);
-      const photo = await ref.current?.takePictureAsync({ quality: 0.65, skipProcessing: true });
+      const photo = await ref.current?.takePictureAsync({
+        quality: 0.6,
+        skipProcessing: true,
+        base64: true,
+      });
       if (photo?.uri) {
-        setFoto(photo.uri);
+        const fotoPayload = photo.base64 ? `data:image/jpeg;base64,${photo.base64}` : photo.uri;
+        setFoto(fotoPayload);
         router.push('/(repartidor)/firma');
       } else {
         Alert.alert('Cámara', 'No se pudo guardar la foto. Probá de nuevo.');

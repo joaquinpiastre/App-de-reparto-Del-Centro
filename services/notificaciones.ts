@@ -1,13 +1,28 @@
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 let handlerListo = false;
+let notificationsModule: typeof import('expo-notifications') | null = null;
+
+function esExpoGo(): boolean {
+  return Constants.executionEnvironment === 'storeClient';
+}
+
+async function getNotificationsModule(): Promise<typeof import('expo-notifications') | null> {
+  if (Platform.OS === 'web' || esExpoGo()) return null;
+  if (!notificationsModule) {
+    notificationsModule = await import('expo-notifications');
+  }
+  return notificationsModule;
+}
 
 export async function inicializarNotificaciones() {
-  if (Platform.OS === 'web') {
+  if (Platform.OS === 'web' || esExpoGo()) {
     return;
   }
   try {
+    const Notifications = await getNotificationsModule();
+    if (!Notifications) return;
     if (!handlerListo) {
       Notifications.setNotificationHandler({
         handleNotification: async () => ({
@@ -35,6 +50,8 @@ export async function notificacionLocal(titulo: string, cuerpo: string) {
     }
     return;
   }
+  const Notifications = await getNotificationsModule();
+  if (!Notifications) return;
   await Notifications.scheduleNotificationAsync({
     content: { title: titulo, body: cuerpo },
     trigger: null,

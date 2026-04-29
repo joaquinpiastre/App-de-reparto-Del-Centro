@@ -30,6 +30,7 @@ const pedidoAdminSchema = z.object({
 
 const estadoSchema = z.object({
   estado: z.enum(['pendiente', 'asignado', 'en_ruta', 'entregado', 'cancelado']),
+  jornadaId: z.string().min(3).optional(),
 });
 
 const editarPedidoSchema = z.object({
@@ -81,6 +82,11 @@ async function ensurePinColumn(): Promise<void> {
   await pool.query(`update repartidores set pin = $1 where pin is null or length(trim(pin)) = 0`, [
     DEMO_PIN,
   ]);
+}
+
+async function ensurePedidosAdminJornadaColumn(): Promise<void> {
+  await pool.query(`alter table pedidos_admin add column if not exists jornada_id text`);
+  await pool.query(`create index if not exists idx_pedidos_admin_jornada on pedidos_admin(jornada_id)`);
 }
 
 adminPedidosRouter.get('/repartidores', requireAuth, async (req, res) => {
@@ -188,6 +194,7 @@ adminPedidosRouter.delete('/repartidores/:id', requireAuth, async (req, res) => 
 });
 
 adminPedidosRouter.get('/admin-pedidos', requireAuth, async (_req, res) => {
+  await ensurePedidosAdminJornadaColumn();
   const user = (_req as ReqWithUser).user;
   const esRepartidor = user?.rol === 'repartidor';
   const baseSelect = `select p.*,
@@ -218,6 +225,7 @@ adminPedidosRouter.get('/admin-pedidos', requireAuth, async (_req, res) => {
 });
 
 adminPedidosRouter.post('/admin-pedidos', requireAuth, async (req, res) => {
+  await ensurePedidosAdminJornadaColumn();
   const parsed = pedidoAdminSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Payload inválido.' });
@@ -278,12 +286,27 @@ adminPedidosRouter.post('/admin-pedidos', requireAuth, async (req, res) => {
 });
 
 adminPedidosRouter.patch('/admin-pedidos/:id/estado', requireAuth, async (req, res) => {
+  await ensurePedidosAdminJornadaColumn();
   const parsed = estadoSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Payload inválido.' });
     return;
   }
-  await pool.query(`update pedidos_admin set estado = $2 where id = $1`, [req.params.id, parsed.data.estado]);
+  const jornadaId =
+    parsed.data.estado === 'entregado' || parsed.data.estado === 'cancelado'
+      ? parsed.data.jornadaId ?? null
+      : null;
+  await pool.query(
+    `update pedidos_admin
+     set estado = $2,
+         jornada_id = case
+           when $3::text is not null then $3::text
+           when $2 in ('entregado','cancelado') then jornada_id
+           else null
+         end
+     where id = $1`,
+    [req.params.id, parsed.data.estado, jornadaId]
+  );
   res.json({ ok: true });
 });
 

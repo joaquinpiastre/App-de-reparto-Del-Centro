@@ -23,6 +23,19 @@ import { useListaPreciosStore } from '@/store/useListaPreciosStore';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
 import type { LineaPedidoCalle, ProductoLista } from '@/types';
 
+function toNumber(value: unknown): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'string') {
+    const n = Number(value.replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
+function fmtMoney(value: unknown): string {
+  return toNumber(value).toFixed(2);
+}
+
 export default function PedidoCalleScreen() {
   const usuario = useAppStore((s) => s.usuario);
   const clientesDelDia = useAppStore((s) => s.clientesDelDia);
@@ -90,7 +103,7 @@ export default function PedidoCalleScreen() {
   }, [clientesDelDia, calleRef]);
 
   const total = useMemo(
-    () => lineas.reduce((acc, l) => acc + l.subtotal, 0),
+    () => lineas.reduce((acc, l) => acc + toNumber(l.subtotal), 0),
     [lineas]
   );
 
@@ -142,7 +155,7 @@ export default function PedidoCalleScreen() {
 
   const agregarProducto = (p: ProductoLista) => {
     const n = Math.max(1, parseInt(cantidad, 10) || 1);
-    const precio = p.precioUnitario;
+    const precio = toNumber(p.precioUnitario);
     const subtotal = Math.round(precio * n * 100) / 100;
     setLineas((prev) => [
       ...prev,
@@ -269,7 +282,7 @@ export default function PedidoCalleScreen() {
               >
                 <Text style={styles.prodTit}>{item.descripcion}</Text>
                 <Text style={styles.prodSub}>
-                  {item.codigo} · ${item.precioUnitario.toFixed(2)}
+                  {item.codigo} · ${fmtMoney(item.precioUnitario)}
                 </Text>
               </Pressable>
             ))
@@ -297,7 +310,7 @@ export default function PedidoCalleScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.prodTit}>{item.descripcion}</Text>
               <Text style={styles.prodSub}>
-                {item.codigo} · ${item.precioUnitario.toFixed(2)}
+                {item.codigo} · ${fmtMoney(item.precioUnitario)}
               </Text>
             </View>
             <Button label="Agregar" onPress={() => agregarProducto(item)} />
@@ -314,11 +327,11 @@ export default function PedidoCalleScreen() {
       ) : (
         lineas.map((l, i) => (
           <Text key={`${l.codigo}-${i}`} style={styles.linea}>
-            {l.cantidad} × {l.descripcion} — ${l.subtotal.toFixed(2)}
+            {l.cantidad} × {l.descripcion} — ${fmtMoney(l.subtotal)}
           </Text>
         ))
       )}
-      <Text style={styles.total}>Total estimado: ${total.toFixed(2)}</Text>
+      <Text style={styles.total}>Total estimado: ${fmtMoney(total)}</Text>
 
       <Text style={styles.label}>Notas para el local (opcional)</Text>
       <TextInput
@@ -342,7 +355,7 @@ export default function PedidoCalleScreen() {
         misPedidos.map((p) => (
           <View key={p.id} style={styles.calleBox}>
             <Text style={styles.calleTitle}>
-              {p.calleMostrada} · ${p.total.toFixed(2)}
+              {p.calleMostrada} · ${fmtMoney(p.total)}
             </Text>
             <Text style={styles.calleRow}>Estado: {p.estado}</Text>
             {p.estado === 'armado' ? (

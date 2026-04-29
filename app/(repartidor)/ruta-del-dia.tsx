@@ -38,7 +38,8 @@ function abrirRutaOptimizadaGoogleMaps(paradas: string[], origen?: { lat: number
 }
 
 export default function RutaDelDia() {
-  const { clientesDelDia, clienteActualIndex, jornadaActiva, ultimaPosicion, usuario, cerrarJornada } = useAppStore();
+  const { clientesDelDia, clienteActualIndex, jornadaActiva, ultimaPosicion, usuario, cerrarJornada, jornadaId } =
+    useAppStore();
   const pedidosAdmin = useAdminPedidosStore((s) => s.pedidos);
   const cierreNotificadoRef = useRef(false);
 
@@ -69,7 +70,9 @@ export default function RutaDelDia() {
               );
               if (pedidosParaCerrar.length > 0) {
                 await Promise.allSettled(
-                  pedidosParaCerrar.map((p) => actualizarEstadoPedidoAdmin(p.id, 'entregado'))
+                  pedidosParaCerrar.map((p) =>
+                    actualizarEstadoPedidoAdmin(p.id, 'entregado', { jornadaId: jornadaId ?? undefined })
+                  )
                 );
               }
               await cerrarJornada();

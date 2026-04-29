@@ -49,6 +49,41 @@ export interface RecorridoJornadaResponse {
   stops: RecorridoStop[];
 }
 
+export interface PedidoJornadaHistorialItem {
+  descripcion: string;
+  cantidad: number;
+  precioUnitario: number;
+  subtotal: number;
+}
+
+export interface PedidoJornadaHistorial {
+  id: string;
+  titulo: string;
+  calles: string[] | string;
+  repartidorId: string;
+  repartidorNombre: string;
+  total: number;
+  notas?: string;
+  estado: string;
+  creadoEn: number;
+  creadoPorId?: string;
+  creadoPorNombre?: string;
+  items: PedidoJornadaHistorialItem[];
+}
+
+export interface EntregaJornadaHistorial {
+  id: string;
+  clienteId: string;
+  estado: 'pendiente' | 'en_camino' | 'entregado' | 'problema';
+  horaLlegada?: number | null;
+  horaEntrega?: number | null;
+  tiempoParadaSegundos?: number | null;
+  fotoUrl?: string | null;
+  firmaUrl?: string | null;
+  notasRepartidor?: string | null;
+  timestampMs?: number | null;
+}
+
 function localStats(cierres: CierreJornadaResumen[]): AdminStatsResponse {
   const slice = cierres.slice(0, 6).reverse();
   const jornadas = cierres.length;
@@ -93,4 +128,24 @@ export async function obtenerRecorridoJornadaAdmin(
 ): Promise<RecorridoJornadaResponse | null> {
   if (!API_ENABLED) return null;
   return apiRequest<RecorridoJornadaResponse>(`/gps/jornadas/${jornadaId}/recorrido`);
+}
+
+export async function obtenerPedidosJornadaAdmin(
+  jornadaId: string
+): Promise<PedidoJornadaHistorial[]> {
+  if (!API_ENABLED) return [];
+  const data = await apiRequest<{ pedidos: PedidoJornadaHistorial[] }>(
+    `/admin-reportes/historial/${jornadaId}/pedidos`
+  );
+  return data.pedidos ?? [];
+}
+
+export async function obtenerEntregasJornadaAdmin(
+  jornadaId: string
+): Promise<EntregaJornadaHistorial[]> {
+  if (!API_ENABLED) return [];
+  const data = await apiRequest<{ entregas: EntregaJornadaHistorial[] }>(
+    `/admin-reportes/historial/${jornadaId}/entregas`
+  );
+  return data.entregas ?? [];
 }
