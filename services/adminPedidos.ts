@@ -5,7 +5,11 @@ import type { EstadoPedidoAdmin, PedidoAdmin, Usuario } from '@/types';
 
 interface ApiListResponse {
   pedidos: Array<
-    Omit<PedidoAdmin, 'calles' | 'total' | 'creadoEn'> & {
+    Omit<PedidoAdmin, 'calles' | 'total' | 'creadoEn' | 'repartidorId' | 'repartidorNombre'> & {
+      repartidor_id?: string;
+      repartidor_nombre?: string;
+      creado_por_id?: string;
+      creado_por_nombre?: string;
       calles: string[] | string;
       total: number | string;
       creado_en_ms?: number;
@@ -23,9 +27,13 @@ function normalizePedido(p: ApiListResponse['pedidos'][number]): PedidoAdmin {
         .filter(Boolean);
   return {
     ...p,
+    repartidorId: String((p.repartidorId ?? p.repartidor_id ?? '') || ''),
+    repartidorNombre: String((p.repartidorNombre ?? p.repartidor_nombre ?? '') || ''),
     calles,
     total: Number(p.total ?? 0),
     creadoEn: Number(p.creadoEn ?? p.creado_en_ms ?? Date.now()),
+    creadoPorId: p.creadoPorId ?? p.creado_por_id ?? undefined,
+    creadoPorNombre: p.creadoPorNombre ?? p.creado_por_nombre ?? undefined,
   };
 }
 
