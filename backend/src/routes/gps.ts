@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth, requireMobileKey } from '../auth.js';
+import { requireAuth, requireMobileKeyOrAuth } from '../auth.js';
 import { pool } from '../db/client.js';
 type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' } };
 
@@ -78,7 +78,7 @@ function detectStops(
   return stops;
 }
 
-gpsRouter.post('/gps/update', requireMobileKey, async (req, res) => {
+gpsRouter.post('/gps/update', requireMobileKeyOrAuth, async (req, res) => {
   const parsed = gpsUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Payload inválido.' });

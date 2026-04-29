@@ -41,3 +41,24 @@ export function requireMobileKey(req: Request, res: Response, next: NextFunction
   }
   next();
 }
+
+export function requireMobileKeyOrAuth(req: Request, res: Response, next: NextFunction): void {
+  const auth = req.headers.authorization;
+  const hasMobileKey = !!config.apiKeyMobile;
+  if (hasMobileKey && auth === `Bearer ${config.apiKeyMobile}`) {
+    next();
+    return;
+  }
+  if (!auth?.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'Falta Bearer válido para GPS.' });
+    return;
+  }
+  const token = auth.slice(7);
+  try {
+    const decoded = jwt.verify(token, config.jwtSecret) as AuthClaims;
+    (req as Request & { user?: AuthClaims }).user = decoded;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Token/API key inválida.' });
+  }
+}
