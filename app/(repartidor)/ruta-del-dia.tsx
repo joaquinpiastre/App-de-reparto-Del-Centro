@@ -1,12 +1,12 @@
 import { router } from 'expo-router';
-import { useEffect, useMemo } from 'react';
-import { FlatList, Linking, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef } from 'react';
+import { Alert, FlatList, Linking, StyleSheet, Text, View } from 'react-native';
 
 import { RutaTrazada } from '@/components/mapa/RutaTrazada';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
-import { suscribirAdminPedidos } from '@/services/adminPedidos';
+import { actualizarEstadoPedidoAdmin, suscribirAdminPedidos } from '@/services/adminPedidos';
 import { useAppStore } from '@/store/useAppStore';
 import { useAdminPedidosStore } from '@/store/useAdminPedidosStore';
 import type { Cliente, PedidoAdmin } from '@/types';
@@ -38,10 +38,48 @@ function abrirRutaOptimizadaGoogleMaps(paradas: string[], origen?: { lat: number
 }
 
 export default function RutaDelDia() {
-  const { clientesDelDia, clienteActualIndex, jornadaActiva, ultimaPosicion, usuario } = useAppStore();
+  const { clientesDelDia, clienteActualIndex, jornadaActiva, ultimaPosicion, usuario, cerrarJornada } = useAppStore();
   const pedidosAdmin = useAdminPedidosStore((s) => s.pedidos);
+  const cierreNotificadoRef = useRef(false);
 
   useEffect(() => suscribirAdminPedidos(() => {}), []);
+
+  useEffect(() => {
+    if (!jornadaActiva || clientesDelDia.length === 0) {
+      cierreNotificadoRef.current = false;
+      return;
+    }
+    const pendientes = clientesDelDia.filter(
+      (c) => c.estado === 'pendiente' || c.estado === 'en_camino'
+    ).length;
+    if (pendientes > 0 || cierreNotificadoRef.current) return;
+    cierreNotificadoRef.current = true;
+    Alert.alert(
+      'Recorrido finalizado',
+      'Se completó el recorrido. Se cerrará la jornada y se enviará al panel de admin.',
+      [
+        {
+          text: 'OK',
+          onPress: () => {
+            void (async () => {
+              const pedidosParaCerrar = pedidosAdmin.filter(
+                (p) =>
+                  p.repartidorId === usuario?.id &&
+                  (p.estado === 'pendiente' || p.estado === 'asignado' || p.estado === 'en_ruta')
+              );
+              if (pedidosParaCerrar.length > 0) {
+                await Promise.allSettled(
+                  pedidosParaCerrar.map((p) => actualizarEstadoPedidoAdmin(p.id, 'entregado'))
+                );
+              }
+              await cerrarJornada();
+              router.replace('/(repartidor)/resumen');
+            })();
+          },
+        },
+      ]
+    );
+  }, [jornadaActiva, clientesDelDia, cerrarJornada, pedidosAdmin, usuario?.id]);
 
   const pedidosActivos = useMemo<PedidoAdmin[]>(() => {
     return pedidosAdmin.filter(
