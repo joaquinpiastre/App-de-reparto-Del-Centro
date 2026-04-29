@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { Alert } from 'react-native';
 
 import { CLIENTES_DEMO_SEED } from '@/constants/demoData';
 import { optimizarRuta } from '@/hooks/useRuta';
@@ -167,7 +168,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
         tiempoParadaSegundos: tiempo,
         firmaBase64,
         fotoUrl: fotoPendienteUri ?? undefined,
-      }).catch((err) => console.warn('registrarEntregaApi:', err));
+      }).catch((err) => {
+        const msg = err instanceof Error ? err.message : 'No se pudo enviar la entrega al backend.';
+        Alert.alert('Entrega no sincronizada', msg);
+      });
     }
     set({ fotoPendienteUri: null });
     get().siguienteCliente();
@@ -188,7 +192,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
         estado: 'problema',
         horaEntrega: Date.now(),
         notasRepartidor: nota,
-      }).catch((err) => console.warn('registrarEntregaApi:', err));
+      }).catch((err) => {
+        const msg = err instanceof Error ? err.message : 'No se pudo enviar la incidencia al backend.';
+        Alert.alert('Incidencia no sincronizada', msg);
+      });
     }
     get().siguienteCliente();
   },
