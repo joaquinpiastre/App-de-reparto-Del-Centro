@@ -13,7 +13,7 @@ interface AdminPedidosState {
 
 export const useAdminPedidosStore = create<AdminPedidosState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       pedidos: [],
       agregarPedido: (p) =>
         set((s) => ({
@@ -24,14 +24,12 @@ export const useAdminPedidosStore = create<AdminPedidosState>()(
           pedidos: s.pedidos.map((x) => (x.id === id ? { ...x, estado } : x)),
         })),
       reemplazarPedidosDesdeRemoto: (list) => {
-        const prev = get().pedidos;
-        const map = new Map(prev.map((x) => [x.id, x]));
-        list.forEach((p) => map.set(p.id, p));
+        const map = new Map(list.map((p) => [p.id, p]));
         set({ pedidos: Array.from(map.values()).sort((a, b) => b.creadoEn - a.creadoEn) });
       },
     }),
     {
-      name: 'delcentro-admin-pedidos',
+      name: 'delcentro-admin-pedidos-v2',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({ pedidos: state.pedidos }),
     }

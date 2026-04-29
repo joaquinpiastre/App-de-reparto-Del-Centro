@@ -13,7 +13,6 @@ import {
 import { LogoDelCentro } from '@/components/LogoDelCentro';
 import { Button } from '@/components/ui/Button';
 import { COLORS } from '@/constants/colors';
-import { DEMO_ADMIN_USER, DEMO_PIN, DEMO_REPARTIDOR_USER } from '@/constants/demoAuth';
 import { loginApi } from '@/services/authApi';
 import { useAppStore } from '@/store/useAppStore';
 
@@ -32,26 +31,12 @@ export default function LoginScreen() {
     let rolFinal: 'admin' | 'repartidor';
     try {
       const remoto = await loginApi(u, p);
-      if (remoto) {
-        setUsuarioGlobal(remoto);
-        rolFinal = remoto.rol;
-      } else {
-        if (p !== DEMO_PIN) {
-          Alert.alert('PIN incorrecto', `En esta demo el PIN es ${DEMO_PIN}.`);
-          return;
-        }
-        const esAdmin = u.includes('admin') || u === DEMO_ADMIN_USER;
-        const nombreDisplay =
-          u === DEMO_REPARTIDOR_USER ? 'Carlos' : u.charAt(0).toUpperCase() + u.slice(1);
-        setUsuarioGlobal({
-          id: esAdmin ? 'usr-admin' : `usr-${u}`,
-          nombre: nombreDisplay,
-          rol: esAdmin ? 'admin' : 'repartidor',
-          activo: true,
-          telefono: undefined,
-        });
-        rolFinal = esAdmin ? 'admin' : 'repartidor';
+      if (!remoto) {
+        Alert.alert('Login', 'No se pudo autenticar contra el backend. Verificá la API.');
+        return;
       }
+      setUsuarioGlobal(remoto);
+      rolFinal = remoto.rol;
     } catch (e) {
       Alert.alert('Login', e instanceof Error ? e.message : 'No se pudo iniciar sesión.');
       return;
@@ -74,9 +59,8 @@ export default function LoginScreen() {
           <View style={styles.webBanner}>
             <Text style={styles.webBannerTitle}>Panel web (computadora)</Text>
             <Text style={styles.webBannerText}>
-              Para administración usá el usuario «{DEMO_ADMIN_USER}» y el PIN. El seguimiento de rutas y pedidos
-              en tiempo real requiere internet y Firebase configurado. Los repartidores operan solo desde la app
-              instalada en los teléfonos de la empresa.
+              Ingresá con usuarios reales creados en el backend. El seguimiento de rutas y pedidos en tiempo real
+              requiere conexión y API operativa.
             </Text>
           </View>
         ) : null}
@@ -94,9 +78,6 @@ export default function LoginScreen() {
           />
           <Button label="INGRESAR" onPress={() => void ingresar()} />
         </View>
-        <Text style={styles.demoHint}>
-          Demo: admin → «{DEMO_ADMIN_USER}» o usuario con «admin» · repartidor → «{DEMO_REPARTIDOR_USER}» · PIN: {DEMO_PIN}
-        </Text>
         <Text style={styles.footer}>Del Centro Pinturerias · v1.0.0</Text>
       </KeyboardAvoidingView>
     </View>
@@ -133,14 +114,5 @@ const styles = StyleSheet.create({
   webBannerText: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto, fontSize: 13, lineHeight: 20 },
   input: { borderWidth: 1, borderColor: '#dcdcdc', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontFamily: 'Poppins_400Regular' },
   inputSpacing: { marginBottom: 12 },
-  demoHint: {
-    color: '#f0ffe0',
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 11,
-    textAlign: 'center',
-    marginTop: 12,
-    paddingHorizontal: 8,
-    opacity: 0.95,
-  },
   footer: { color: '#eafadf', fontFamily: 'Poppins_400Regular', marginTop: 8 },
 });

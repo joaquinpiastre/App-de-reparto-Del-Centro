@@ -5,7 +5,6 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
-import { DEMO_REPARTIDOR_USER } from '@/constants/demoAuth';
 import { obtenerCatalogoProductos, reemplazarCatalogoProductos } from '@/services/catalogoProductos';
 import { parseListaPreciosDesdeUri } from '@/services/listaPreciosExcel';
 import {
@@ -85,14 +84,8 @@ export default function PedidosCalleAdmin() {
           return;
         }
       } catch {}
-      const fallback: Usuario = {
-        id: `usr-${DEMO_REPARTIDOR_USER}`,
-        nombre: 'Carlos',
-        rol: 'repartidor',
-        activo: true,
-      };
-      setRepartidores([fallback]);
-      setRepartidorId((prev) => prev || fallback.id);
+      setRepartidores([]);
+      setRepartidorId('');
     })();
     return () => {
       mounted = false;

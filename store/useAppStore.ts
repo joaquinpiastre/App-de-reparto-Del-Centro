@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { Alert } from 'react-native';
 
-import { CLIENTES_DEMO_SEED, REGION_SAN_RAFAEL } from '@/constants/demoData';
 import { optimizarRuta } from '@/hooks/useRuta';
 import { obtenerPedidosAdmin } from '@/services/adminPedidos';
 import { registrarCierreJornadaApi, registrarEntregaApi } from '@/services/entregasApi';
@@ -10,9 +9,7 @@ import type { Cliente, Coordenadas, EstadoEntrega, PedidoAdmin, Usuario } from '
 
 import { useHistorialStore } from './useHistorialStore';
 
-function clonarClientesIniciales(): Cliente[] {
-  return optimizarRuta(JSON.parse(JSON.stringify(CLIENTES_DEMO_SEED)) as Cliente[]);
-}
+const BASE_COORDENADAS = { lat: -34.6177, lng: -68.3301 };
 
 function hashToOffset(seed: string): number {
   let hash = 0;
@@ -34,8 +31,8 @@ function pedidoToCliente(p: PedidoAdmin, index: number): Cliente {
       ? `${primerItem.cantidad} x ${primerItem.descripcion}`
       : `Pedido #${index + 1}`,
     coordenadas: {
-      lat: REGION_SAN_RAFAEL.latitude + hashToOffset(`${p.id}-lat`),
-      lng: REGION_SAN_RAFAEL.longitude + hashToOffset(`${p.id}-lng`),
+      lat: BASE_COORDENADAS.lat + hashToOffset(`${p.id}-lat`),
+      lng: BASE_COORDENADAS.lng + hashToOffset(`${p.id}-lng`),
     },
     estado: p.estado === 'entregado' ? 'entregado' : p.estado === 'cancelado' ? 'problema' : 'pendiente',
     orden: index + 1,
@@ -104,8 +101,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setEntregaTimerSegundos: (n) => set({ entregaTimerSegundos: n }),
   iniciarJornada: async () => {
     const { usuario } = get();
+    if (!usuario?.id) {
+      Alert.alert('Turno', 'No hay usuario logueado.');
+      return;
+    }
     const jornadaId = `jor-${Date.now()}`;
-    let clientes = clonarClientesIniciales();
+    let clientes: Cliente[] = [];
     try {
       const clientesAdmin = await cargarClientesDesdePedidosAdmin(usuario);
       if (clientesAdmin.length > 0) {
@@ -113,6 +114,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }
     } catch (err) {
       console.warn('cargarClientesDesdePedidosAdmin:', err);
+    }
+    if (clientes.length === 0) {
+      Alert.alert('Sin rutas asignadas', 'No tenés pedidos activos asignados por el administrador.');
+      return;
     }
     set({
       jornadaActiva: true,

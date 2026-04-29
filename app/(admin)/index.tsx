@@ -4,7 +4,6 @@ import { router } from 'expo-router';
 
 import { Screen } from '@/components/ui/Screen';
 import { Button } from '@/components/ui/Button';
-import { CLIENTES_DEMO_SEED } from '@/constants/demoData';
 import { useAppStore } from '@/store/useAppStore';
 import { useAdminPedidosStore } from '@/store/useAdminPedidosStore';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
@@ -33,14 +32,6 @@ export default function AdminDashboard() {
       <View style={styles.card}>
         <Text style={styles.t}>Pedidos en calle pendientes: {pendientes}</Text>
         <Text style={styles.s}>Pedidos levantados por repartidores durante la ruta.</Text>
-      </View>
-      <View style={styles.card}>
-        <Text style={styles.t}>Clientes en catálogo demo: {CLIENTES_DEMO_SEED.length}</Text>
-        <Text style={styles.s}>En producción enlazá esta vista a Firestore `clientes`.</Text>
-      </View>
-      <View style={styles.card}>
-        <Text style={styles.t}>Entregas demo del día</Text>
-        <Text style={styles.s}>Usá la app repartidor con turno iniciado para simular rutas reales.</Text>
       </View>
       <Button label="CERRAR SESIÓN" onPress={cerrarSesion} variant="danger" />
     </Screen>
