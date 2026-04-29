@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 
 import { Button } from '@/components/ui/Button';
@@ -102,6 +102,13 @@ export default function PedidosCalleAdmin() {
   const total = useMemo(() => items.reduce((acc, x) => acc + x.subtotal, 0), [items]);
   const listaPendientes = useMemo(
     () => lista.filter((x) => x.estado === 'pendiente').sort((a, b) => b.creadoEn - a.creadoEn),
+    [lista]
+  );
+  const listaActivos = useMemo(
+    () =>
+      lista
+        .filter((x) => x.estado === 'pendiente' || x.estado === 'asignado' || x.estado === 'en_ruta')
+        .sort((a, b) => b.creadoEn - a.creadoEn),
     [lista]
   );
   const pedidosCalleActivos = useMemo(
@@ -286,7 +293,7 @@ export default function PedidosCalleAdmin() {
       return;
     }
     if (listaPendientes.length === 0) {
-      avisar('Envío', 'No hay pedidos pendientes para enviar.');
+      setFeedback({ tipo: 'ok', msg: 'No hay pedidos pendientes para enviar. Los pedidos nuevos ya se crean asignados.' });
       return;
     }
     setGuardando(true);
@@ -480,34 +487,31 @@ export default function PedidosCalleAdmin() {
         />
       </View>
 
-      <FlatList
-        style={styles.list}
-        data={listaPendientes}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 24 }}
-        ListEmptyComponent={
-          <Text style={styles.empty}>No hay pedidos pendientes. Podés cargar un nuevo lote.</Text>
-        }
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <Text style={styles.title}>
-              {item.titulo} · {fmtFecha(item.creadoEn)}
-            </Text>
-            <Text style={styles.row}>Estado: {item.estado} · Total ${item.total.toFixed(2)}</Text>
-            <Text style={styles.row}>Calles: {item.calles.join(', ')}</Text>
-            {item.items.map((l, i) => (
-              <Text key={`${item.id}-l-${i}`} style={styles.itemLine}>
-                {l.cantidad} × {l.descripcion} (${l.subtotal.toFixed(2)})
+      <ScrollView style={styles.list} contentContainerStyle={{ paddingBottom: 24 }}>
+        {listaActivos.length === 0 ? (
+          <Text style={styles.empty}>No hay pedidos activos. Podés cargar un nuevo lote.</Text>
+        ) : (
+          listaActivos.map((item) => (
+            <View key={item.id} style={styles.card}>
+              <Text style={styles.title}>
+                {item.titulo} · {fmtFecha(item.creadoEn)}
               </Text>
-            ))}
-            {item.notas ? <Text style={styles.notas}>Nota: {item.notas}</Text> : null}
-            <View style={styles.actions}>
-              <Button label="Editar" variant="secondary" onPress={() => iniciarEdicion(item)} />
-              <Button label="Eliminar" variant="danger" onPress={() => void borrarPedido(item.id)} />
+              <Text style={styles.row}>Estado: {item.estado} · Total ${item.total.toFixed(2)}</Text>
+              <Text style={styles.row}>Calles: {item.calles.join(', ')}</Text>
+              {item.items.map((l, i) => (
+                <Text key={`${item.id}-l-${i}`} style={styles.itemLine}>
+                  {l.cantidad} × {l.descripcion} (${l.subtotal.toFixed(2)})
+                </Text>
+              ))}
+              {item.notas ? <Text style={styles.notas}>Nota: {item.notas}</Text> : null}
+              <View style={styles.actions}>
+                <Button label="Editar" variant="secondary" onPress={() => iniciarEdicion(item)} />
+                <Button label="Eliminar" variant="danger" onPress={() => void borrarPedido(item.id)} />
+              </View>
             </View>
-          </View>
+          ))
         )}
-      />
+      </ScrollView>
     </Screen>
   );
 }

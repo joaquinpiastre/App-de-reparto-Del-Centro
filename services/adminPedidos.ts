@@ -114,8 +114,8 @@ export function suscribirAdminPedidos(onChange: (list: PedidoAdmin[]) => void): 
         const list = data.pedidos.map(normalizePedido);
         useAdminPedidosStore.getState().reemplazarPedidosDesdeRemoto(list);
         onChange(list);
-      } catch (e) {
-        console.warn('suscribirAdminPedidos API:', e);
+      } catch {
+        // Silencioso: evita ruido continuo en consola ante cortes de conectividad.
       }
     };
     void load();

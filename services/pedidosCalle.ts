@@ -39,8 +39,8 @@ export function suscribirPedidosCalle(onChange: (list: PedidoCalle[]) => void): 
         const data = await apiRequest<{ pedidos: PedidoCalle[] }>('/pedidos-calle');
         usePedidosCalleStore.getState().reemplazarPedidosDesdeRemoto(data.pedidos);
         onChange(data.pedidos);
-      } catch (e) {
-        console.warn('suscribirPedidosCalle API:', e);
+      } catch {
+        // Sin ruido en consola: puede fallar momentáneamente por red o backend caído.
       }
     };
     void load();
