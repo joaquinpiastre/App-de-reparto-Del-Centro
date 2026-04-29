@@ -56,8 +56,9 @@ export async function iniciarGPS(jornadaId: string, repartidorId: string, repart
 
   await Location.startLocationUpdatesAsync(LOCATION_TASK, {
     accuracy: Location.Accuracy.Balanced,
-    distanceInterval: 30,
-    timeInterval: 30000,
+    // Mayor frecuencia para seguimiento en tiempo real desde admin.
+    distanceInterval: 10,
+    timeInterval: 5000,
     showsBackgroundLocationIndicator: true,
     foregroundService: {
       notificationTitle: 'Del Centro - GPS Activo',

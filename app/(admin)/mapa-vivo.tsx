@@ -71,7 +71,7 @@ export default function MapaVivo() {
         </View>
       ) : null}
       <Text style={styles.legend}>
-        La web lee ubicaciones desde la API (`/gps/live`) y actualiza cada 10s.
+        La web lee ubicaciones desde la API (`/gps/live`) y actualiza cada 3s.
       </Text>
     </Screen>
   );

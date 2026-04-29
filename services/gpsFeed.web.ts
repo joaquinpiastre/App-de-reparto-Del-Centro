@@ -33,7 +33,7 @@ export function suscribirTelefonosGps(
   void tick();
   timer = setInterval(() => {
     void tick();
-  }, 10000);
+  }, 3000);
 
   return () => {
     activo = false;

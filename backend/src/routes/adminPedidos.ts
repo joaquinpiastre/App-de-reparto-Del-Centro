@@ -164,33 +164,26 @@ adminPedidosRouter.patch('/repartidores/:id', requireAuth, async (req, res) => {
 adminPedidosRouter.delete('/repartidores/:id', requireAuth, async (req, res) => {
   if (!requireAdmin(req as ReqWithUser, res)) return;
   const id = req.params.id;
-  const checks = await Promise.all([
-    pool.query(`select 1 from jornadas where repartidor_id = $1 limit 1`, [id]),
-    pool.query(`select 1 from pedidos_calle where repartidor_id = $1 limit 1`, [id]),
-    pool.query(`select 1 from pedidos_admin where repartidor_id = $1 limit 1`, [id]),
-    pool.query(`select 1 from entregas where repartidor_id = $1 limit 1`, [id]),
-  ]);
-  const tieneHistorial = checks.some((r) => (r.rowCount ?? 0) > 0);
-  if (tieneHistorial) {
-    const up = await pool.query(
-      `update repartidores
-       set activo = false
-       where id = $1 and rol = 'repartidor'`,
-      [id]
-    );
-    if (up.rowCount === 0) {
+  await pool.query('begin');
+  try {
+    await pool.query(`delete from entregas where repartidor_id = $1`, [id]);
+    await pool.query(`delete from pedidos_calle where repartidor_id = $1`, [id]);
+    await pool.query(`delete from pedidos_admin where repartidor_id = $1`, [id]);
+    await pool.query(`delete from cierres_jornada where repartidor_id = $1`, [id]).catch(() => {});
+    await pool.query(`delete from gps_points where repartidor_id = $1`, [id]);
+    await pool.query(`delete from jornadas where repartidor_id = $1`, [id]);
+    const del = await pool.query(`delete from repartidores where id = $1 and rol = 'repartidor'`, [id]);
+    if (del.rowCount === 0) {
+      await pool.query('rollback');
       res.status(404).json({ error: 'Repartidor no encontrado.' });
       return;
     }
-    res.json({ ok: true, eliminado: false, mensaje: 'Tiene historial y se desactivó en lugar de eliminarse.' });
-    return;
+    await pool.query('commit');
+    res.json({ ok: true, eliminado: true });
+  } catch (e) {
+    await pool.query('rollback');
+    throw e;
   }
-  const del = await pool.query(`delete from repartidores where id = $1 and rol = 'repartidor'`, [id]);
-  if (del.rowCount === 0) {
-    res.status(404).json({ error: 'Repartidor no encontrado.' });
-    return;
-  }
-  res.json({ ok: true, eliminado: true });
 });
 
 adminPedidosRouter.get('/admin-pedidos', requireAuth, async (_req, res) => {
@@ -370,11 +363,9 @@ adminPedidosRouter.patch('/admin-pedidos/:id', requireAuth, async (req, res) => 
 });
 
 adminPedidosRouter.delete('/admin-pedidos/:id', requireAuth, async (req, res) => {
-  const del = await pool.query(`delete from pedidos_admin where id = $1 and estado = 'pendiente'`, [
-    req.params.id,
-  ]);
+  const del = await pool.query(`delete from pedidos_admin where id = $1`, [req.params.id]);
   if (del.rowCount === 0) {
-    res.status(409).json({ error: 'Solo se pueden eliminar pedidos pendientes.' });
+    res.status(404).json({ error: 'Pedido no encontrado.' });
     return;
   }
   res.json({ ok: true });
