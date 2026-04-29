@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
@@ -108,6 +108,34 @@ export default function RepartidoresAdminScreen() {
   };
 
   const eliminar = (r: Usuario) => {
+    const ejecutarEliminacion = () => {
+      void (async () => {
+        try {
+          setGuardando(true);
+          setError(null);
+          setOk(null);
+          const out = await eliminarRepartidorAdmin(r.id);
+          setOk(out.eliminado ? 'Repartidor eliminado.' : out.mensaje ?? 'Repartidor desactivado.');
+          await cargar();
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'No se pudo eliminar.');
+        } finally {
+          setGuardando(false);
+        }
+      })();
+    };
+    if (Platform.OS === 'web') {
+      const confirmado =
+        typeof globalThis !== 'undefined' &&
+        typeof globalThis.confirm === 'function' &&
+        globalThis.confirm(
+          `¿Querés eliminar a ${r.nombre}? Si tiene historial, se desactivará en lugar de borrarse.`
+        );
+      if (confirmado) {
+        ejecutarEliminacion();
+      }
+      return;
+    }
     Alert.alert(
       'Eliminar repartidor',
       `¿Querés eliminar a ${r.nombre}? Si tiene historial, se desactivará en lugar de borrarse.`,
@@ -116,22 +144,7 @@ export default function RepartidoresAdminScreen() {
         {
           text: 'Eliminar',
           style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              try {
-                setGuardando(true);
-                setError(null);
-                setOk(null);
-                const out = await eliminarRepartidorAdmin(r.id);
-                setOk(out.eliminado ? 'Repartidor eliminado.' : out.mensaje ?? 'Repartidor desactivado.');
-                await cargar();
-              } catch (e) {
-                setError(e instanceof Error ? e.message : 'No se pudo eliminar.');
-              } finally {
-                setGuardando(false);
-              }
-            })();
-          },
+          onPress: ejecutarEliminacion,
         },
       ]
     );
