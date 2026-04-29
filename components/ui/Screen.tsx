@@ -1,5 +1,5 @@
 import { Children, isValidElement, type PropsWithChildren } from 'react';
-import { Platform, SafeAreaView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, SafeAreaView, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { COLORS } from '@/constants/colors';
 
 interface Props extends PropsWithChildren {
@@ -33,16 +33,24 @@ export function Screen({ title, subtitle, children }: Props) {
         <Text style={[styles.title, { fontSize: isCompact ? 20 : 24 }]}>{title}</Text>
         {subtitle ? <Text style={[styles.subtitle, { fontSize: isCompact ? 12 : 13 }]}>{subtitle}</Text> : null}
       </View>
-      <View
-        style={[
-          styles.body,
-          { paddingHorizontal: bodyHorizontal, paddingVertical: isCompact ? 12 : 16 },
-          isWeb ? styles.bodyWeb : undefined,
-          isWeb ? { maxWidth: maxBodyWidth } : undefined,
-        ]}
-      >
-        {spaced}
-      </View>
+      {isWeb ? (
+        <ScrollView style={styles.bodyScrollWeb} contentContainerStyle={styles.bodyScrollWebContent}>
+          <View
+            style={[
+              styles.body,
+              { paddingHorizontal: bodyHorizontal, paddingVertical: isCompact ? 12 : 16 },
+              styles.bodyWeb,
+              { maxWidth: maxBodyWidth },
+            ]}
+          >
+            {spaced}
+          </View>
+        </ScrollView>
+      ) : (
+        <View style={[styles.body, { paddingHorizontal: bodyHorizontal, paddingVertical: isCompact ? 12 : 16 }]}>
+          {spaced}
+        </View>
+      )}
     </Root>
   );
 }
@@ -58,8 +66,9 @@ const styles = StyleSheet.create({
     flex: 1,
     flexGrow: 1,
     width: '100%',
-    maxWidth: 960,
     alignSelf: 'center',
   },
+  bodyScrollWeb: { flex: 1, width: '100%' },
+  bodyScrollWebContent: { flexGrow: 1, paddingBottom: 24 },
   childSpacing: { marginTop: 12 },
 });
