@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 
 import { Button } from '@/components/ui/Button';
@@ -8,7 +8,6 @@ import { COLORS } from '@/constants/colors';
 import { obtenerCatalogoProductos, reemplazarCatalogoProductos } from '@/services/catalogoProductos';
 import { parseListaPreciosDesdeUri } from '@/services/listaPreciosExcel';
 import {
-  actualizarEstadoPedidoCalle,
   crearPedidoAdmin,
   editarPedidoAdmin,
   eliminarPedidoAdmin,
@@ -16,11 +15,11 @@ import {
   asignarPedidoAdmin,
   suscribirAdminPedidos,
 } from '@/services/adminPedidos';
-import { suscribirPedidosCalle } from '@/services/pedidosCalle';
+import { actualizarEstadoPedidoCalle, suscribirPedidosCalle } from '@/services/pedidosCalle';
 import { useAppStore } from '@/store/useAppStore';
 import { useAdminPedidosStore } from '@/store/useAdminPedidosStore';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
-import type { PedidoAdmin, PedidoAdminItem, PedidoCalle, Usuario } from '@/types';
+import type { EstadoPedidoCalle, PedidoAdmin, PedidoAdminItem, PedidoCalle, Usuario } from '@/types';
 
 function fmtFecha(ts: number) {
   try {
@@ -57,6 +56,7 @@ export default function PedidosCalleAdmin() {
   const [feedback, setFeedback] = useState<{ tipo: 'ok' | 'error'; msg: string } | null>(null);
   const [catalogoMeta, setCatalogoMeta] = useState<{ nombreArchivo: string | null; updatedAt: string | null } | null>(null);
   const [subiendoCatalogo, setSubiendoCatalogo] = useState(false);
+  const [filtroPedidosCalle, setFiltroPedidosCalle] = useState<'todos' | 'activos'>('todos');
 
   const avisar = (titulo: string, msg: string, tipo: 'ok' | 'error' = 'error') => {
     setFeedback({ tipo, msg });
@@ -104,25 +104,33 @@ export default function PedidosCalleAdmin() {
         .sort((a, b) => b.creadoEn - a.creadoEn),
     [lista]
   );
-  const pedidosCalleActivos = useMemo(
-    () =>
-      pedidosCalle
-        .filter((p) => p.estado !== 'retirado' && p.estado !== 'cancelado')
-        .sort((a, b) => b.creadoEn - a.creadoEn),
+  const pedidosCalleOrdenados = useMemo(
+    () => [...pedidosCalle].sort((a, b) => b.creadoEn - a.creadoEn),
     [pedidosCalle]
   );
-  const pedidosPendientes = useMemo(
-    () => pedidosCalleActivos.filter((p) => p.estado === 'pendiente'),
-    [pedidosCalleActivos]
-  );
-  const pedidosVistos = useMemo(
-    () => pedidosCalleActivos.filter((p) => p.estado === 'visto'),
-    [pedidosCalleActivos]
-  );
-  const pedidosArmados = useMemo(
-    () => pedidosCalleActivos.filter((p) => p.estado === 'armado'),
-    [pedidosCalleActivos]
-  );
+  const resumenPedidosCalle = useMemo(() => {
+    const c: Record<EstadoPedidoCalle, number> = {
+      pendiente: 0,
+      visto: 0,
+      armado: 0,
+      retirado: 0,
+      cancelado: 0,
+    };
+    for (const p of pedidosCalle) {
+      c[p.estado] += 1;
+    }
+    return c;
+  }, [pedidosCalle]);
+  const pedidosCalleVista = useMemo(() => {
+    if (filtroPedidosCalle === 'activos') {
+      return pedidosCalleOrdenados.filter(
+        (p) => p.estado !== 'retirado' && p.estado !== 'cancelado'
+      );
+    }
+    return pedidosCalleOrdenados;
+  }, [pedidosCalleOrdenados, filtroPedidosCalle]);
+
+  const esEstadoFinal = (e: EstadoPedidoCalle) => e === 'retirado' || e === 'cancelado';
 
   useEffect(() => {
     (async () => {
@@ -346,7 +354,10 @@ export default function PedidosCalleAdmin() {
   };
 
   return (
-    <Screen title="Gestión de pedidos" subtitle="Admin crea, asigna calles y productos por repartidor">
+    <Screen
+      title="Gestión de pedidos"
+      subtitle="Catálogo, pedidos admin y listado completo de pedidos levantados en calle"
+    >
       {feedback ? (
         <View style={[styles.feedback, feedback.tipo === 'ok' ? styles.feedbackOk : styles.feedbackError]}>
           <Text style={styles.feedbackText}>{feedback.msg}</Text>
@@ -367,50 +378,96 @@ export default function PedidosCalleAdmin() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.label}>Pedidos de calle (en preparación)</Text>
-        <Text style={styles.row}>
-          Pendientes: {pedidosPendientes.length} · Vistos: {pedidosVistos.length} · Armados:{' '}
-          {pedidosArmados.length}
+        <Text style={styles.sectionHeading}>Pedidos levantados en la calle</Text>
+        <Text style={styles.rowMuted}>
+          Listado completo de lo que cargan los repartidores desde la app. Total en sistema:{' '}
+          {pedidosCalle.length}.
         </Text>
-        {pedidosCalleActivos.length === 0 ? (
-          <Text style={styles.empty}>No hay pedidos de calle activos.</Text>
+        <Text style={styles.row}>
+          Pendientes: {resumenPedidosCalle.pendiente} · Vistos: {resumenPedidosCalle.visto} · Armados:{' '}
+          {resumenPedidosCalle.armado} · Retirados: {resumenPedidosCalle.retirado} · Cancelados:{' '}
+          {resumenPedidosCalle.cancelado}
+        </Text>
+        <View style={styles.filtrosRow}>
+          <Pressable
+            onPress={() => setFiltroPedidosCalle('todos')}
+            style={[styles.filtroChip, filtroPedidosCalle === 'todos' && styles.filtroChipOn]}
+          >
+            <Text style={[styles.filtroChipTxt, filtroPedidosCalle === 'todos' && styles.filtroChipTxtOn]}>
+              Todos ({pedidosCalle.length})
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setFiltroPedidosCalle('activos')}
+            style={[styles.filtroChip, filtroPedidosCalle === 'activos' && styles.filtroChipOn]}
+          >
+            <Text style={[styles.filtroChipTxt, filtroPedidosCalle === 'activos' && styles.filtroChipTxtOn]}>
+              Solo activos (
+              {pedidosCalle.filter((x) => x.estado !== 'retirado' && x.estado !== 'cancelado').length})
+            </Text>
+          </Pressable>
+        </View>
+
+        {pedidosCalleVista.length === 0 ? (
+          <Text style={styles.empty}>
+            {pedidosCalle.length === 0
+              ? 'Todavía no hay pedidos desde la calle.'
+              : 'Nada que mostrar con este filtro.'}
+          </Text>
         ) : (
-          pedidosCalleActivos.map((p) => (
+          pedidosCalleVista.map((p) => (
             <View key={p.id} style={styles.cardMini}>
+              <Text style={styles.fechaCalle}>{fmtFecha(p.creadoEn)}</Text>
               <Text style={styles.title}>
                 {p.repartidorNombre} · {p.calleMostrada}
               </Text>
               <Text style={styles.row}>
-                Estado: {p.estado} · Total ${p.total.toFixed(2)}
+                <Text style={styles.estadoBadge}>Estado: {p.estado}</Text>
+                {' · '}
+                Total ${p.total.toFixed(2)}
               </Text>
-              {p.items.map((it, idx) => (
+              {(p.items ?? []).map((it, idx) => (
                 <Text key={`${p.id}-it-${idx}`} style={styles.itemLine}>
-                  {it.cantidad} × {it.descripcion} (${it.subtotal.toFixed(2)})
+                  {it.cantidad} × {it.descripcion} (${Number(it.subtotal).toFixed(2)})
                 </Text>
               ))}
               {p.notas ? <Text style={styles.notas}>Nota repartidor: {p.notas}</Text> : null}
-              <View style={styles.actions}>
-                <Button
-                  label="VISTO"
-                  variant="secondary"
-                  onPress={() => void cambiarEstadoPedidoCalle(p, 'visto')}
-                />
-                <Button
-                  label="ARMADO"
-                  variant="primary"
-                  onPress={() => void cambiarEstadoPedidoCalle(p, 'armado')}
-                />
-                <Button
-                  label="RETIRADO"
-                  variant="warning"
-                  onPress={() => void cambiarEstadoPedidoCalle(p, 'retirado')}
-                />
-                <Button
-                  label="CANCELAR"
-                  variant="danger"
-                  onPress={() => void cambiarEstadoPedidoCalle(p, 'cancelado')}
-                />
-              </View>
+              {p.clientesMismaCalle && p.clientesMismaCalle.length > 0 ? (
+                <View style={styles.mismaCalleBox}>
+                  <Text style={styles.mismaCalleTit}>Clientes en la misma calle (ruta)</Text>
+                  {p.clientesMismaCalle.map((c) => (
+                    <Text key={c.direccion + c.nombre} style={styles.mismaCalleRow}>
+                      · {c.nombre} — {c.direccion}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+              {!esEstadoFinal(p.estado) ? (
+                <View style={[styles.actions, styles.actionsWrap]}>
+                  <Button
+                    label="VISTO"
+                    variant="secondary"
+                    onPress={() => void cambiarEstadoPedidoCalle(p, 'visto')}
+                  />
+                  <Button
+                    label="ARMADO"
+                    variant="primary"
+                    onPress={() => void cambiarEstadoPedidoCalle(p, 'armado')}
+                  />
+                  <Button
+                    label="RETIRADO"
+                    variant="warning"
+                    onPress={() => void cambiarEstadoPedidoCalle(p, 'retirado')}
+                  />
+                  <Button
+                    label="CANCELAR"
+                    variant="danger"
+                    onPress={() => void cambiarEstadoPedidoCalle(p, 'cancelado')}
+                  />
+                </View>
+              ) : (
+                <Text style={styles.finalizadoTxt}>Pedido finalizado — no requiere acción.</Text>
+              )}
             </View>
           ))
         )}
@@ -578,5 +635,60 @@ const styles = StyleSheet.create({
   itemLine: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto, marginTop: 2 },
   notas: { fontFamily: 'Poppins_600SemiBold', color: COLORS.verdeOscuro, marginTop: 8 },
   actions: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  actionsWrap: { marginTop: 8 },
+  actionsWrap: { flexWrap: 'wrap', marginTop: 12 },
+  sectionHeading: {
+    fontFamily: 'Poppins_800ExtraBold',
+    fontSize: 18,
+    color: COLORS.verdeOscuro,
+    marginBottom: 6,
+  },
+  rowMuted: {
+    fontFamily: 'Poppins_400Regular',
+    color: COLORS.grisSecundario,
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  filtrosRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  filtroChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#c8d4cc',
+    backgroundColor: '#fff',
+  },
+  filtroChipOn: {
+    borderColor: COLORS.verdeOscuro,
+    backgroundColor: '#ecfdf3',
+  },
+  filtroChipTxt: { fontFamily: 'Poppins_600SemiBold', fontSize: 14, color: COLORS.grisTexto },
+  filtroChipTxtOn: { color: COLORS.verdeOscuro },
+  fechaCalle: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 13,
+    color: COLORS.grisSecundario,
+    marginBottom: 4,
+  },
+  estadoBadge: { fontFamily: 'Poppins_600SemiBold', color: COLORS.verdeOscuro },
+  mismaCalleBox: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  mismaCalleTit: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 13,
+    color: COLORS.grisTexto,
+    marginBottom: 4,
+  },
+  mismaCalleRow: { fontFamily: 'Poppins_400Regular', fontSize: 13, color: COLORS.grisSecundario },
+  finalizadoTxt: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 14,
+    color: COLORS.grisSecundario,
+    marginTop: 12,
+    fontStyle: 'italic',
+  },
 });

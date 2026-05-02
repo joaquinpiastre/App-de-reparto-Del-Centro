@@ -25,10 +25,11 @@ function normalizePedido(p: ApiListResponse['pedidos'][number]): PedidoAdmin {
         .split(',')
         .map((x) => x.trim())
         .filter(Boolean);
+  const idNom = p as typeof p & { repartidorId?: string; repartidorNombre?: string };
   return {
     ...p,
-    repartidorId: String((p.repartidorId ?? p.repartidor_id ?? '') || ''),
-    repartidorNombre: String((p.repartidorNombre ?? p.repartidor_nombre ?? '') || ''),
+    repartidorId: String((idNom.repartidorId ?? idNom.repartidor_id ?? '') || ''),
+    repartidorNombre: String((idNom.repartidorNombre ?? idNom.repartidor_nombre ?? '') || ''),
     calles,
     total: Number(p.total ?? 0),
     creadoEn: Number(p.creadoEn ?? p.creado_en_ms ?? Date.now()),

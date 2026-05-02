@@ -15,7 +15,9 @@ function getHostFromExpo(): string | null {
 
 function resolveApiUrl(url?: string): string {
   if (!url) return '';
-  const normalized = url.replace(/\/$/, '');
+  const trimmed = url.trim();
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  const normalized = withScheme.replace(/\/$/, '');
   if (Platform.OS === 'web') return normalized;
   if (!/^https?:\/\/localhost(?::\d+)?$/i.test(normalized)) return normalized;
   const host = getHostFromExpo();

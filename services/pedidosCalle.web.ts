@@ -1,6 +1,6 @@
 /**
- * Versión web: sincroniza con API Railway cuando está configurada.
- * Fallback local para demo/offline.
+ * Versión web: sincroniza con la API cuando EXPO_PUBLIC_API_URL está definida;
+ * sin API, el store local sigue mostrando lo que haya en el dispositivo.
  */
 import { API_ENABLED } from '@/constants/api';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';

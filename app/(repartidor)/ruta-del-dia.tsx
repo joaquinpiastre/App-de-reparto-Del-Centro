@@ -6,35 +6,27 @@ import { RutaTrazada } from '@/components/mapa/RutaTrazada';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
+import { paradasParaMapsDesdeJornada, urlGoogleMapsRutaOptimizada } from '@/hooks/useRuta';
 import { actualizarEstadoPedidoAdmin, suscribirAdminPedidos } from '@/services/adminPedidos';
 import { useAppStore } from '@/store/useAppStore';
 import { useAdminPedidosStore } from '@/store/useAdminPedidosStore';
-import type { Cliente, PedidoAdmin } from '@/types';
+import type { Cliente } from '@/types';
 
 function abrirNavegacion(c: Cliente) {
+  const dest = c.direccion?.trim();
+  if (dest) {
+    void Linking.openURL(
+      `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}&travelmode=driving`
+    );
+    return;
+  }
   const { lat, lng } = c.coordenadas;
-  const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-  Linking.openURL(url);
+  void Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`);
 }
 
 function abrirRutaOptimizadaGoogleMaps(paradas: string[], origen?: { lat: number; lng: number } | null) {
-  if (paradas.length === 0) return;
-  const p = paradas.filter(Boolean);
-  if (p.length === 1) {
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(p[0])}&travelmode=driving`;
-    void Linking.openURL(url);
-    return;
-  }
-  const destination = p[p.length - 1];
-  const waypoints = p.slice(0, p.length - 1);
-  const originParam = origen ? `&origin=${encodeURIComponent(`${origen.lat},${origen.lng}`)}` : '';
-  const wp = waypoints.length
-    ? `&waypoints=${encodeURIComponent(`optimize:true|${waypoints.join('|')}`)}`
-    : '';
-  const url = `https://www.google.com/maps/dir/?api=1${originParam}&destination=${encodeURIComponent(
-    destination
-  )}&travelmode=driving${wp}`;
-  void Linking.openURL(url);
+  const url = urlGoogleMapsRutaOptimizada(paradas, { origen: origen ?? undefined });
+  if (url) void Linking.openURL(url);
 }
 
 export default function RutaDelDia() {
@@ -84,23 +76,10 @@ export default function RutaDelDia() {
     );
   }, [jornadaActiva, clientesDelDia, cerrarJornada, pedidosAdmin, usuario?.id]);
 
-  const pedidosActivos = useMemo<PedidoAdmin[]>(() => {
-    return pedidosAdmin.filter(
-      (p) =>
-        p.repartidorId === usuario?.id && (p.estado === 'asignado' || p.estado === 'en_ruta')
-    );
-  }, [pedidosAdmin, usuario?.id]);
-
+  /** Misma secuencia que la lista de la jornada + calles del pedido (no un Set mezclado de otros filtros). */
   const paradasOptimizadas = useMemo<string[]>(() => {
-    const set = new Set<string>();
-    pedidosActivos.forEach((pedido) => {
-      pedido.calles.forEach((calle) => {
-        const key = calle.trim();
-        if (key) set.add(key);
-      });
-    });
-    return Array.from(set);
-  }, [pedidosActivos]);
+    return paradasParaMapsDesdeJornada(clientesDelDia, pedidosAdmin);
+  }, [clientesDelDia, pedidosAdmin]);
 
   if (!jornadaActiva || clientesDelDia.length === 0) {
     return (
@@ -118,9 +97,9 @@ export default function RutaDelDia() {
   return (
     <Screen title="Mis entregas de hoy" subtitle="Ruta optimizada">
       <RutaTrazada clientes={clientesDelDia} destacarClienteId={actual?.id} />
-      {pedidosActivos.length > 0 ? (
+      {paradasOptimizadas.length > 0 ? (
         <View style={styles.pedidoBox}>
-          <Text style={styles.pedidoTitle}>Pedidos asignados: {pedidosActivos.length}</Text>
+          <Text style={styles.pedidoTitle}>Paradas del recorrido: {paradasOptimizadas.length}</Text>
           <Text style={styles.detalle}>Paradas totales (una ruta optimizada en Google Maps):</Text>
           {paradasOptimizadas.map((c, i) => (
             <Text key={`parada-${c}-${i}`} style={styles.paradaItem}>

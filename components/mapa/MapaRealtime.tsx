@@ -1,12 +1,12 @@
 import { StyleSheet } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 
-import { REGION_SAN_RAFAEL } from '@/constants/demoData';
+import { REGION_SAN_RAFAEL } from '@/constants/mapRegion';
 import { COLORS } from '@/constants/colors';
 import type { Coordenadas, TelefonoUbicacion } from '@/types';
 
 interface Props {
-  /** Posición del repartidor (demo: última GPS o null). */
+  /** Posición del repartidor (última GPS o null). */
   posicion?: Coordenadas | null;
   tituloMarcador?: string;
   telefonos?: TelefonoUbicacion[];

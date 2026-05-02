@@ -1,6 +1,7 @@
 import { API_ENABLED } from '@/constants/api';
-import { CLIENTES_DEMO_SEED } from '@/constants/demoData';
 import { apiRequest } from './apiClient';
+
+export type TipoCatalogoCliente = 'cliente' | 'taller';
 
 export interface ClienteAdminCatalogo {
   id: string;
@@ -8,22 +9,37 @@ export interface ClienteAdminCatalogo {
   direccion: string;
   telefono: string;
   pedido: string;
+  tipo: TipoCatalogoCliente;
 }
 
-let clientesLocales: ClienteAdminCatalogo[] = CLIENTES_DEMO_SEED.map((c) => ({
-  id: c.id,
-  nombre: c.nombre,
-  direccion: c.direccion,
-  telefono: c.telefono,
-  pedido: c.pedido,
-}));
+function normalizarClienteApi(raw: {
+  id: string;
+  nombre: string;
+  direccion: string;
+  telefono: string;
+  pedido: string;
+  tipo?: string | null;
+}): ClienteAdminCatalogo {
+  const tipo: TipoCatalogoCliente = raw.tipo === 'taller' ? 'taller' : 'cliente';
+  return {
+    id: raw.id,
+    nombre: raw.nombre,
+    direccion: raw.direccion,
+    telefono: raw.telefono,
+    pedido: raw.pedido,
+    tipo,
+  };
+}
+
+/** Solo si la API está desactivada: lista vacía (sin datos ficticios). Configurá EXPO_PUBLIC_API_URL para producción. */
+let clientesLocales: ClienteAdminCatalogo[] = [];
 
 export async function listarClientesAdmin(): Promise<ClienteAdminCatalogo[]> {
   if (!API_ENABLED) {
     return clientesLocales;
   }
   const data = await apiRequest<{ clientes: ClienteAdminCatalogo[] }>('/clientes');
-  return data.clientes;
+  return data.clientes.map((c) => normalizarClienteApi(c));
 }
 
 export async function crearClienteAdmin(
@@ -33,6 +49,7 @@ export async function crearClienteAdmin(
     const nuevo: ClienteAdminCatalogo = {
       id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       ...payload,
+      tipo: payload.tipo ?? 'cliente',
     };
     clientesLocales = [nuevo, ...clientesLocales];
     return nuevo;
@@ -41,7 +58,7 @@ export async function crearClienteAdmin(
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  return data.cliente;
+  return normalizarClienteApi(data.cliente);
 }
 
 export async function actualizarClienteAdmin(
@@ -49,7 +66,9 @@ export async function actualizarClienteAdmin(
   payload: Omit<ClienteAdminCatalogo, 'id'>
 ): Promise<ClienteAdminCatalogo> {
   if (!API_ENABLED) {
-    clientesLocales = clientesLocales.map((c) => (c.id === id ? { ...c, ...payload } : c));
+    clientesLocales = clientesLocales.map((c) =>
+      c.id === id ? { ...c, ...payload, tipo: payload.tipo ?? c.tipo } : c
+    );
     const up = clientesLocales.find((c) => c.id === id);
     if (!up) throw new Error('Cliente no encontrado.');
     return up;
@@ -58,7 +77,7 @@ export async function actualizarClienteAdmin(
     method: 'PATCH',
     body: JSON.stringify(payload),
   });
-  return data.cliente;
+  return normalizarClienteApi(data.cliente);
 }
 
 export async function eliminarClienteAdmin(id: string): Promise<void> {

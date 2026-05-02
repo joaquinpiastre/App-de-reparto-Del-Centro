@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 
-import { REGION_SAN_RAFAEL } from '@/constants/demoData';
+import { REGION_SAN_RAFAEL } from '@/constants/mapRegion';
 import { COLORS } from '@/constants/colors';
 import type { Cliente } from '@/types';
 

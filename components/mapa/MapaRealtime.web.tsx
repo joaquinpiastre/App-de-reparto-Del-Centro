@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { REGION_SAN_RAFAEL } from '@/constants/demoData';
+import { REGION_SAN_RAFAEL } from '@/constants/mapRegion';
 import { COLORS } from '@/constants/colors';
 import type { Coordenadas, TelefonoUbicacion } from '@/types';
 

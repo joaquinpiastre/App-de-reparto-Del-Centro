@@ -168,7 +168,7 @@ export default function RepartidoresAdminScreen() {
         <Text style={styles.label}>Usuario {editingId ? '(no editable)' : ''}</Text>
         <TextInput
           style={[styles.input, editingId ? styles.inputDisabled : undefined]}
-          placeholder="Ej: carlos"
+          placeholder="Usuario único (sin espacios)"
           value={usuario}
           onChangeText={setUsuario}
           editable={!editingId}
@@ -184,7 +184,7 @@ export default function RepartidoresAdminScreen() {
         <Text style={styles.label}>PIN (4 dígitos)</Text>
         <TextInput
           style={styles.input}
-          placeholder="1234"
+          placeholder="4 dígitos"
           value={pin}
           onChangeText={setPin}
           keyboardType="number-pad"

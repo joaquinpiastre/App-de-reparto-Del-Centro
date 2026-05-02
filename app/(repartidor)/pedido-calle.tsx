@@ -1,8 +1,7 @@
-import * as DocumentPicker from 'expo-document-picker';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  FlatList,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,16 +12,12 @@ import {
 
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
-import { API_ENABLED } from '@/constants/api';
 import { COLORS } from '@/constants/colors';
 import { direccionesMismaCalle, normalizarCalle } from '@/lib/direccion';
-import { parseListaPreciosDesdeUri } from '@/services/listaPreciosExcel';
-import { obtenerCatalogoProductos } from '@/services/catalogoProductos';
 import { actualizarEstadoPedidoCalle, publicarPedidoCalle, suscribirPedidosCalle } from '@/services/pedidosCalle';
 import { useAppStore } from '@/store/useAppStore';
-import { useListaPreciosStore } from '@/store/useListaPreciosStore';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
-import type { LineaPedidoCalle, ProductoLista } from '@/types';
+import type { LineaPedidoCalle } from '@/types';
 
 function toNumber(value: unknown): number {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -41,62 +36,28 @@ export default function PedidoCalleScreen() {
   const usuario = useAppStore((s) => s.usuario);
   const clientesDelDia = useAppStore((s) => s.clientesDelDia);
   const jornadaActiva = useAppStore((s) => s.jornadaActiva);
-
-  const productos = useListaPreciosStore((s) => s.productos);
-  const ultimoArchivo = useListaPreciosStore((s) => s.ultimoArchivo);
-  const setLista = useListaPreciosStore((s) => s.setLista);
   const pedidosCalle = usePedidosCalleStore((s) => s.pedidos);
 
-  const [busqueda, setBusqueda] = useState('');
   const [calleRef, setCalleRef] = useState('');
-  const [cantidad, setCantidad] = useState('1');
   const [notas, setNotas] = useState('');
   const [lineas, setLineas] = useState<LineaPedidoCalle[]>([]);
-  const [importando, setImportando] = useState(false);
   const [enviando, setEnviando] = useState(false);
-  const [syncCatalogo, setSyncCatalogo] = useState(false);
-  const [catalogoMsg, setCatalogoMsg] = useState('');
-  const [mostrarListaCompleta, setMostrarListaCompleta] = useState(false);
+
+  const [descManual, setDescManual] = useState('');
+  const [precioManual, setPrecioManual] = useState('');
+  const [cantidadManual, setCantidadManual] = useState('1');
 
   const misPedidos = useMemo(() => {
     if (!usuario?.id) return [];
     return pedidosCalle
       .filter((p) => p.repartidorId === usuario.id)
       .sort((a, b) => b.creadoEn - a.creadoEn)
-      .slice(0, 8);
+      .slice(0, 10);
   }, [pedidosCalle, usuario?.id]);
 
   useEffect(() => {
-    const unsubscribe = suscribirPedidosCalle(() => {});
-    return unsubscribe;
+    return suscribirPedidosCalle(() => {});
   }, []);
-
-  useEffect(() => {
-    if (!API_ENABLED) {
-      setCatalogoMsg('Modo local: importá Excel manualmente en el teléfono.');
-      return;
-    }
-    if (productos.length === 0) {
-      void sincronizarCatalogo();
-    }
-    const timer = setInterval(() => {
-      void sincronizarCatalogo();
-    }, 15000);
-    return () => clearInterval(timer);
-  }, [productos.length]);
-
-  const filtrados = useMemo(() => {
-    const q = busqueda.trim().toLowerCase();
-    if (!q) return productos.slice(0, 40);
-    return productos
-      .filter(
-        (p) =>
-          p.descripcion.toLowerCase().includes(q) || p.codigo.toLowerCase().includes(q)
-      )
-      .slice(0, 40);
-  }, [productos, busqueda]);
-  const coincidencias = useMemo(() => filtrados.slice(0, 8), [filtrados]);
-  const sugerenciasExpandibles = useMemo(() => filtrados.slice(0, 20), [filtrados]);
 
   const clientesMismaCalle = useMemo(() => {
     if (!calleRef.trim()) return [];
@@ -110,66 +71,35 @@ export default function PedidoCalleScreen() {
     [lineas]
   );
 
-  const importarExcel = async () => {
-    try {
-      setImportando(true);
-      const res = await DocumentPicker.getDocumentAsync({
-        copyToCacheDirectory: true,
-        type: [
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'application/vnd.ms-excel',
-        ],
-      });
-      if (res.canceled || !res.assets?.[0]?.uri) return;
-      const asset = res.assets[0];
-      const lista = await parseListaPreciosDesdeUri(asset.uri);
-      if (lista.length === 0) {
-        Alert.alert('Lista vacía', 'No encontramos filas con descripción y precio. Revisá el Excel.');
-        return;
-      }
-      setLista(lista, asset.name ?? 'precios.xlsx');
-      Alert.alert('Listo', `Se importaron ${lista.length} productos.`);
-    } catch (e) {
-      console.warn(e);
-      Alert.alert('Error', 'No se pudo leer el archivo. Probá otro Excel o exportá como .xlsx.');
-    } finally {
-      setImportando(false);
+  const agregarLineaManual = () => {
+    const descripcion = descManual.trim();
+    const precio = Number(precioManual.replace(',', '.'));
+    const cantidad = Math.max(1, parseInt(cantidadManual, 10) || 1);
+    if (!descripcion) {
+      Alert.alert('Producto', 'Escribí qué producto es.');
+      return;
     }
-  };
-
-  const sincronizarCatalogo = async () => {
-    try {
-      setSyncCatalogo(true);
-      const catalogo = await obtenerCatalogoProductos();
-      if (!catalogo || catalogo.productos.length === 0) {
-        setCatalogoMsg('No hay catálogo central publicado todavía.');
-        return;
-      }
-      setLista(catalogo.productos, catalogo.nombreArchivo ?? 'catalogo-central');
-      setCatalogoMsg(
-        `Catálogo central: ${catalogo.productos.length} productos (${catalogo.nombreArchivo ?? 'sin nombre'}).`
-      );
-    } catch (e) {
-      setCatalogoMsg(e instanceof Error ? e.message : 'No se pudo sincronizar el catálogo.');
-    } finally {
-      setSyncCatalogo(false);
+    if (!Number.isFinite(precio) || precio <= 0) {
+      Alert.alert('Precio', 'Ingresá un precio unitario válido (solo lo ves vos en este paso).');
+      return;
     }
-  };
-
-  const agregarProducto = (p: ProductoLista) => {
-    const n = Math.max(1, parseInt(cantidad, 10) || 1);
-    const precio = toNumber(p.precioUnitario);
-    const subtotal = Math.round(precio * n * 100) / 100;
+    const subtotal = Math.round(precio * cantidad * 100) / 100;
     setLineas((prev) => [
       ...prev,
       {
-        codigo: p.codigo,
-        descripcion: p.descripcion,
-        cantidad: n,
+        descripcion,
+        cantidad,
         precioUnitario: precio,
         subtotal,
       },
     ]);
+    setDescManual('');
+    setPrecioManual('');
+    setCantidadManual('1');
+  };
+
+  const quitarLinea = (index: number) => {
+    setLineas((prev) => prev.filter((_, i) => i !== index));
   };
 
   const enviarPedido = async () => {
@@ -182,7 +112,7 @@ export default function PedidoCalleScreen() {
       return;
     }
     if (lineas.length === 0) {
-      Alert.alert('Pedido', 'Agregá al menos un producto.');
+      Alert.alert('Pedido', 'Agregá al menos una línea con producto y precio.');
       return;
     }
     try {
@@ -213,236 +143,292 @@ export default function PedidoCalleScreen() {
     }
   };
 
+  const FormBody = Platform.OS === 'web' ? View : ScrollView;
+  const formScrollProps =
+    Platform.OS === 'web'
+      ? {}
+      : ({
+          keyboardShouldPersistTaps: 'handled',
+          showsVerticalScrollIndicator: true,
+          contentContainerStyle: styles.scrollContent,
+        } as const);
+
   return (
     <Screen
       title="Pedido en la calle"
-      subtitle="Lista Excel · misma calle · aviso al local"
+      subtitle="Cargá producto y precio a mano; sin listas ni Excel"
     >
-      <Text style={styles.help}>
-        Importá un Excel con columnas de código, descripción y precio. Buscá productos, armá el
-        pedido y enviálo; en administración aparece en «Pedidos calle».
-      </Text>
+      <FormBody {...formScrollProps}>
+        <Text style={styles.help}>
+          No hay catálogo ni importación: escribís el producto y el precio unitario solo en tu teléfono.
+          El local recibe el pedido armado para preparar.
+        </Text>
 
-      <Button
-        label={importando ? 'IMPORTANDO…' : 'IMPORTAR EXCEL DE PRECIOS'}
-        loading={importando}
-        onPress={() => void importarExcel()}
-        variant="secondary"
-      />
-      <Button
-        label={syncCatalogo ? 'SINCRONIZANDO…' : 'SINCRONIZAR CATÁLOGO CENTRAL'}
-        loading={syncCatalogo}
-        onPress={() => void sincronizarCatalogo()}
-        variant="secondary"
-      />
-      {ultimoArchivo ? (
-        <Text style={styles.meta}>Último archivo: {ultimoArchivo} · {productos.length} ítems</Text>
-      ) : (
-        <Text style={styles.meta}>Todavía no cargaste precios.</Text>
-      )}
-      {catalogoMsg ? <Text style={styles.metaStrong}>{catalogoMsg}</Text> : null}
-
-      <Text style={styles.label}>Calle de referencia (para agrupar paradas)</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Ej: Av. San Martín"
-        placeholderTextColor={COLORS.grisSecundario}
-        value={calleRef}
-        onChangeText={setCalleRef}
-      />
-      {jornadaActiva && clientesMismaCalle.length > 0 ? (
-        <View style={styles.calleBox}>
-          <Text style={styles.calleTitle}>Clientes de tu ruta en esa calle:</Text>
-          {clientesMismaCalle.map((c) => (
-            <Text key={c.direccion + c.nombre} style={styles.calleRow}>
-              · {c.nombre} — {c.direccion}
-            </Text>
-          ))}
-        </View>
-      ) : null}
-
-      <Text style={styles.label}>Buscar en lista</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Nombre o código"
-        placeholderTextColor={COLORS.grisSecundario}
-        value={busqueda}
-        onChangeText={setBusqueda}
-      />
-      {busqueda.trim().length > 0 ? (
-        <View style={styles.sugerenciasBox}>
-          <Text style={styles.metaStrong}>Coincidencias en catálogo</Text>
-          {sugerenciasExpandibles.length === 0 ? (
-            <Text style={styles.meta}>Sin coincidencias.</Text>
-          ) : (
-            <ScrollView style={styles.sugerenciasScroll} nestedScrollEnabled>
-              {sugerenciasExpandibles.map((item) => (
-                <Pressable
-                  key={`sug-${item.codigo}-${item.descripcion}`}
-                  style={styles.sugerenciaRow}
-                  onPress={() => {
-                    agregarProducto(item);
-                    setBusqueda('');
-                  }}
-                >
-                  <Text style={styles.prodTit}>{item.descripcion}</Text>
-                  <Text style={styles.prodSub}>
-                    {item.codigo} · ${fmtMoney(item.precioUnitario)}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          )}
-        </View>
-      ) : null}
-
-      <Text style={styles.label}>Cantidad para agregar</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="1"
-        placeholderTextColor={COLORS.grisSecundario}
-        value={cantidad}
-        onChangeText={setCantidad}
-        keyboardType="number-pad"
-      />
-
-      <View style={styles.topActions}>
-        <Button
-          label={mostrarListaCompleta ? 'OCULTAR LISTA COMPLETA' : 'VER LISTA COMPLETA'}
-          variant="secondary"
-          onPress={() => setMostrarListaCompleta((v) => !v)}
+        <Text style={styles.label}>Calle de referencia</Text>
+        <Text style={styles.hint}>Para agrupar con tu ruta actual</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej: Av. San Martín 1200"
+          placeholderTextColor={COLORS.grisSecundario}
+          value={calleRef}
+          onChangeText={setCalleRef}
         />
-      </View>
-      {mostrarListaCompleta ? (
-        <FlatList
-          data={filtrados}
-          keyExtractor={(item) => item.codigo + item.descripcion}
-          style={styles.lista}
-          nestedScrollEnabled
-          renderItem={({ item }) => (
-            <View style={styles.prodRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.prodTit}>{item.descripcion}</Text>
-                <Text style={styles.prodSub}>
-                  {item.codigo} · ${fmtMoney(item.precioUnitario)}
-                </Text>
-              </View>
-              <Button label="Agregar" onPress={() => agregarProducto(item)} />
-            </View>
-          )}
-          ListEmptyComponent={
-            <Text style={styles.meta}>Importá un Excel o ajustá la búsqueda.</Text>
-          }
-        />
-      ) : null}
-
-      <Text style={styles.label}>Ítems del pedido</Text>
-      {lineas.length === 0 ? (
-        <Text style={styles.meta}>Todavía no agregaste productos.</Text>
-      ) : (
-        lineas.map((l, i) => (
-          <Text key={`${l.codigo}-${i}`} style={styles.linea}>
-            {l.cantidad} × {l.descripcion} — ${fmtMoney(l.subtotal)}
-          </Text>
-        ))
-      )}
-      <Text style={styles.total}>Total estimado: ${fmtMoney(total)}</Text>
-
-      <Text style={styles.label}>Notas para el local (opcional)</Text>
-      <TextInput
-        style={[styles.input, styles.multiline]}
-        placeholder="Ej: dejar en depósito / factura a nombre de…"
-        placeholderTextColor={COLORS.grisSecundario}
-        value={notas}
-        onChangeText={setNotas}
-        multiline
-      />
-
-      <Button
-        label={enviando ? 'ENVIANDO…' : 'ENVIAR PEDIDO AL LOCAL'}
-        loading={enviando}
-        onPress={() => void enviarPedido()}
-      />
-      <Text style={styles.label}>Mis pedidos al local</Text>
-      {misPedidos.length === 0 ? (
-        <Text style={styles.meta}>Todavía no enviaste pedidos.</Text>
-      ) : (
-        misPedidos.map((p) => (
-          <View key={p.id} style={styles.calleBox}>
-            <Text style={styles.calleTitle}>
-              {p.calleMostrada} · ${fmtMoney(p.total)}
-            </Text>
-            <Text style={styles.calleRow}>Estado: {p.estado}</Text>
-            {p.estado === 'armado' ? (
-              <View style={{ marginTop: 8 }}>
-                <Button
-                  label="MARCAR RETIRADO"
-                  onPress={() => void actualizarEstadoPedidoCalle(p.id, 'retirado')}
-                />
-              </View>
-            ) : null}
+        {jornadaActiva && clientesMismaCalle.length > 0 ? (
+          <View style={styles.calleBox}>
+            <Text style={styles.calleTitle}>Clientes de tu ruta en esa calle</Text>
+            {clientesMismaCalle.map((c) => (
+              <Text key={c.direccion + c.nombre} style={styles.calleRow}>
+                · {c.nombre} — {c.direccion}
+              </Text>
+            ))}
           </View>
-        ))
-      )}
+        ) : null}
+
+        <View style={styles.cardDestacada}>
+          <Text style={styles.sectionTitle}>Nueva línea del pedido</Text>
+          <Text style={styles.privacyNote}>
+            Producto y precio los cargás vos acá; no usamos lista descargable ni Excel en esta pantalla.
+          </Text>
+
+          <Text style={styles.label}>Producto</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Descripción del producto"
+            placeholderTextColor={COLORS.grisSecundario}
+            value={descManual}
+            onChangeText={setDescManual}
+          />
+
+          <Text style={styles.label}>Precio unitario</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Ej: 1250 o 1250,50"
+            placeholderTextColor={COLORS.grisSecundario}
+            value={precioManual}
+            onChangeText={setPrecioManual}
+            keyboardType="decimal-pad"
+          />
+
+          <Text style={styles.label}>Cantidad</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="1"
+            placeholderTextColor={COLORS.grisSecundario}
+            value={cantidadManual}
+            onChangeText={setCantidadManual}
+            keyboardType="number-pad"
+          />
+
+          <Button label="AGREGAR AL PEDIDO" onPress={agregarLineaManual} variant="secondary" />
+        </View>
+
+        <Text style={styles.label}>Ítems del pedido</Text>
+        {lineas.length === 0 ? (
+          <Text style={styles.meta}>Todavía no agregaste líneas.</Text>
+        ) : (
+          lineas.map((l, i) => (
+            <View key={`${l.descripcion}-${i}`} style={styles.lineaCard}>
+              <View style={styles.lineaHeader}>
+                <Text style={styles.lineaTit} numberOfLines={3}>
+                  {l.cantidad} × {l.descripcion}
+                </Text>
+                <Pressable
+                  onPress={() => quitarLinea(i)}
+                  style={styles.quitarBtn}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="Quitar línea"
+                >
+                  <Text style={styles.quitarTxt}>Quitar</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.lineaPrecio}>
+                Unit. ${fmtMoney(l.precioUnitario)} · Subtotal ${fmtMoney(l.subtotal)}
+              </Text>
+            </View>
+          ))
+        )}
+        <Text style={styles.total}>Total estimado: ${fmtMoney(total)}</Text>
+
+        <Text style={styles.label}>Notas para el local (opcional)</Text>
+        <TextInput
+          style={[styles.input, styles.multiline]}
+          placeholder="Ej: dejar en depósito / factura a nombre de…"
+          placeholderTextColor={COLORS.grisSecundario}
+          value={notas}
+          onChangeText={setNotas}
+          multiline
+        />
+
+        <Button
+          label={enviando ? 'ENVIANDO…' : 'ENVIAR PEDIDO AL LOCAL'}
+          loading={enviando}
+          onPress={() => void enviarPedido()}
+        />
+
+        <Text style={[styles.label, styles.sep]}>Mis pedidos al local</Text>
+        {misPedidos.length === 0 ? (
+          <Text style={styles.meta}>Todavía no enviaste pedidos.</Text>
+        ) : (
+          misPedidos.map((p) => (
+            <View key={p.id} style={styles.pedidoCard}>
+              <Text style={styles.pedidoTit}>
+                {p.calleMostrada} · ${fmtMoney(p.total)}
+              </Text>
+              <Text style={styles.pedidoEstado}>Estado: {p.estado}</Text>
+              {p.items?.length ? (
+                <View style={styles.pedidoItems}>
+                  {p.items.map((it, idx) => (
+                    <Text key={`${p.id}-it-${idx}`} style={styles.pedidoItemRow}>
+                      {it.cantidad} × {it.descripcion} — ${fmtMoney(it.subtotal)}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+              {p.estado === 'armado' ? (
+                <View style={styles.retiradoWrap}>
+                  <Button
+                    label="MARCAR RETIRADO"
+                    onPress={() => void actualizarEstadoPedidoCalle(p.id, 'retirado')}
+                  />
+                </View>
+              ) : null}
+            </View>
+          ))
+        )}
+      </FormBody>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  help: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto, marginBottom: 10, fontSize: 14, lineHeight: 20 },
-  meta: { fontFamily: 'Poppins_400Regular', color: COLORS.grisSecundario, marginVertical: 6, fontSize: 13 },
-  metaStrong: { fontFamily: 'Poppins_600SemiBold', color: COLORS.verdeOscuro, marginBottom: 8, fontSize: 13 },
-  label: { fontFamily: 'Poppins_700Bold', color: COLORS.grisTexto, marginTop: 10, fontSize: 14 },
+  scrollContent: {
+    paddingBottom: 40,
+    flexGrow: 1,
+  },
+  help: {
+    fontFamily: 'Poppins_400Regular',
+    color: COLORS.grisTexto,
+    marginBottom: 6,
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  hint: {
+    fontFamily: 'Poppins_400Regular',
+    color: COLORS.grisSecundario,
+    fontSize: 13,
+    marginBottom: 6,
+    marginTop: -4,
+  },
+  meta: { fontFamily: 'Poppins_400Regular', color: COLORS.grisSecundario, marginVertical: 8, fontSize: 15 },
+  label: {
+    fontFamily: 'Poppins_700Bold',
+    color: COLORS.grisTexto,
+    marginTop: 14,
+    marginBottom: 6,
+    fontSize: 16,
+  },
+  sep: { marginTop: 22 },
   input: {
     borderWidth: 1,
-    borderColor: '#dcdcdc',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    borderColor: '#c8c8c8',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 14 : 12,
+    minHeight: 52,
     fontFamily: 'Poppins_400Regular',
     backgroundColor: '#fff',
-    fontSize: 14,
+    fontSize: 16,
   },
-  multiline: { minHeight: 72, textAlignVertical: 'top' },
-  sugerenciasBox: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#dfe6dc',
-    borderRadius: 12,
-    marginTop: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-  },
-  sugerenciasScroll: { maxHeight: 220 },
-  sugerenciaRow: {
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
+  multiline: { minHeight: 100, textAlignVertical: 'top', paddingTop: 14 },
   calleBox: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 10,
-    marginTop: 8,
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 10,
     borderWidth: 1,
     borderColor: COLORS.verdePrincipal,
   },
-  calleTitle: { fontFamily: 'Poppins_700Bold', color: COLORS.verdeOscuro, fontSize: 14 },
-  calleRow: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto, fontSize: 13 },
-  topActions: { marginTop: 8 },
-  lista: { maxHeight: 260, marginTop: 8 },
-  prodRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  calleTitle: { fontFamily: 'Poppins_700Bold', color: COLORS.verdeOscuro, fontSize: 16, marginBottom: 6 },
+  calleRow: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto, fontSize: 15, lineHeight: 22 },
+
+  cardDestacada: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 10,
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#dfe6dc',
+    gap: 0,
+  },
+  sectionTitle: {
+    fontFamily: 'Poppins_800ExtraBold',
+    fontSize: 18,
+    color: COLORS.verdeOscuro,
+    marginBottom: 8,
+  },
+  privacyNote: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 14,
+    color: COLORS.grisSecundario,
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+
+  lineaCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
+  },
+  lineaHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  lineaTit: {
+    fontFamily: 'Poppins_600SemiBold',
+    color: COLORS.grisTexto,
+    fontSize: 16,
+    flex: 1,
+    lineHeight: 22,
+  },
+  quitarBtn: { paddingVertical: 4, paddingHorizontal: 8 },
+  quitarTxt: { fontFamily: 'Poppins_600SemiBold', color: '#c43c3c', fontSize: 15 },
+  lineaPrecio: {
+    fontFamily: 'Poppins_500Medium',
+    color: COLORS.grisSecundario,
+    fontSize: 15,
+    marginTop: 8,
+  },
+  total: {
+    fontFamily: 'Poppins_800ExtraBold',
+    fontSize: 22,
+    color: COLORS.verdeOscuro,
+    marginTop: 14,
     marginBottom: 6,
   },
-  prodTit: { fontFamily: 'Poppins_600SemiBold', color: COLORS.grisTexto, fontSize: 14 },
-  prodSub: { fontFamily: 'Poppins_400Regular', color: COLORS.grisSecundario, fontSize: 12 },
-  linea: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto, fontSize: 14 },
-  total: { fontFamily: 'Poppins_800ExtraBold', fontSize: 18, color: COLORS.verdeOscuro, marginTop: 8 },
+
+  pedidoCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#dde3e8',
+  },
+  pedidoTit: { fontFamily: 'Poppins_700Bold', color: COLORS.verdeOscuro, fontSize: 17 },
+  pedidoEstado: { fontFamily: 'Poppins_500Medium', color: COLORS.grisTexto, fontSize: 15, marginTop: 6 },
+  pedidoItems: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#eee' },
+  pedidoItemRow: {
+    fontFamily: 'Poppins_400Regular',
+    color: COLORS.grisTexto,
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 4,
+  },
+  retiradoWrap: { marginTop: 12 },
 });

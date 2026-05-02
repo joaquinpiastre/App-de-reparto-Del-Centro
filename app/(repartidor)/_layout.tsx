@@ -37,6 +37,7 @@ export default function RepartidorLayout() {
       >
         <Tabs.Screen name="index" options={{ title: 'Inicio', tabBarIcon: ({ color, focused }) => <MaterialIcons name="home" size={focused ? 23 : 21} color={color} /> }} />
         <Tabs.Screen name="ruta-del-dia" options={{ title: 'Ruta', tabBarIcon: ({ color, focused }) => <MaterialIcons name="alt-route" size={focused ? 23 : 21} color={color} /> }} />
+        <Tabs.Screen name="clientes" options={{ title: 'Clientes', tabBarIcon: ({ color, focused }) => <MaterialIcons name="groups" size={focused ? 23 : 21} color={color} /> }} />
         <Tabs.Screen name="resumen" options={{ title: 'Resumen', tabBarIcon: ({ color, focused }) => <MaterialIcons name="insights" size={focused ? 23 : 21} color={color} /> }} />
         <Tabs.Screen name="en-entrega" options={{ tabBarButton: () => null }} />
         <Tabs.Screen name="camara" options={{ tabBarButton: () => null }} />

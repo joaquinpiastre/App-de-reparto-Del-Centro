@@ -112,7 +112,16 @@ const styles = StyleSheet.create({
   },
   webBannerTitle: { fontFamily: 'Poppins_700Bold', color: COLORS.verdeOscuro, marginBottom: 6 },
   webBannerText: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto, fontSize: 13, lineHeight: 20 },
-  input: { borderWidth: 1, borderColor: '#dcdcdc', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontFamily: 'Poppins_400Regular' },
+  input: {
+    borderWidth: 1,
+    borderColor: '#dcdcdc',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    minHeight: 52,
+    fontSize: 16,
+    fontFamily: 'Poppins_400Regular',
+  },
   inputSpacing: { marginBottom: 12 },
   footer: { color: '#eafadf', fontFamily: 'Poppins_400Regular', marginTop: 8 },
 });

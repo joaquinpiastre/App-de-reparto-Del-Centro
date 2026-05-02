@@ -10,6 +10,7 @@ const crearClienteSchema = z.object({
   direccion: z.string().trim().min(4),
   telefono: z.string().trim().min(6),
   pedido: z.string().trim().min(2),
+  tipo: z.enum(['cliente', 'taller']).optional().default('cliente'),
 });
 
 const editarClienteSchema = z.object({
@@ -17,6 +18,7 @@ const editarClienteSchema = z.object({
   direccion: z.string().trim().min(4),
   telefono: z.string().trim().min(6),
   pedido: z.string().trim().min(2),
+  tipo: z.enum(['cliente', 'taller']).optional().default('cliente'),
 });
 
 async function ensureClientesTable(): Promise<void> {
@@ -31,11 +33,24 @@ async function ensureClientesTable(): Promise<void> {
       created_at timestamptz not null default now()
     )`
   );
+  await pool.query(`alter table clientes add column if not exists tipo text not null default 'cliente'`);
+  await pool.query(
+    `update clientes set tipo = 'cliente' where tipo is null or trim(tipo) = ''`
+  );
 }
 
 function requireAdmin(req: ReqWithUser, res: { status: (n: number) => { json: (b: unknown) => void } }): boolean {
   if (req.user?.rol !== 'admin') {
-    res.status(403).json({ error: 'Solo admins pueden administrar clientes.' });
+    res.status(403).json({ error: 'Solo el administrador puede eliminar clientes del catálogo.' });
+    return false;
+  }
+  return true;
+}
+
+function requireAltaEdicionClientes(req: ReqWithUser, res: { status: (n: number) => { json: (b: unknown) => void } }): boolean {
+  const r = req.user?.rol;
+  if (r !== 'admin' && r !== 'repartidor') {
+    res.status(403).json({ error: 'Iniciá sesión como admin o repartidor para gestionar clientes.' });
     return false;
   }
   return true;
@@ -46,7 +61,7 @@ export const clientesRouter = Router();
 clientesRouter.get('/clientes', requireAuth, async (_req, res) => {
   await ensureClientesTable();
   const { rows } = await pool.query(
-    `select id, nombre, direccion, telefono, pedido
+    `select id, nombre, direccion, telefono, pedido, tipo
      from clientes
      where activo = true
      order by created_at desc`
@@ -55,7 +70,7 @@ clientesRouter.get('/clientes', requireAuth, async (_req, res) => {
 });
 
 clientesRouter.post('/clientes', requireAuth, async (req, res) => {
-  if (!requireAdmin(req as ReqWithUser, res)) return;
+  if (!requireAltaEdicionClientes(req as ReqWithUser, res)) return;
   const parsed = crearClienteSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Payload inválido.' });
@@ -65,15 +80,15 @@ clientesRouter.post('/clientes', requireAuth, async (req, res) => {
   const p = parsed.data;
   const id = `c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   await pool.query(
-    `insert into clientes (id, nombre, direccion, telefono, pedido, activo)
-     values ($1, $2, $3, $4, $5, true)`,
-    [id, p.nombre, p.direccion, p.telefono, p.pedido]
+    `insert into clientes (id, nombre, direccion, telefono, pedido, tipo, activo)
+     values ($1, $2, $3, $4, $5, $6, true)`,
+    [id, p.nombre, p.direccion, p.telefono, p.pedido, p.tipo]
   );
-  res.json({ ok: true, cliente: { id, ...p } });
+  res.json({ ok: true, cliente: { id, nombre: p.nombre, direccion: p.direccion, telefono: p.telefono, pedido: p.pedido, tipo: p.tipo } });
 });
 
 clientesRouter.patch('/clientes/:id', requireAuth, async (req, res) => {
-  if (!requireAdmin(req as ReqWithUser, res)) return;
+  if (!requireAltaEdicionClientes(req as ReqWithUser, res)) return;
   const parsed = editarClienteSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Payload inválido.' });
@@ -83,15 +98,25 @@ clientesRouter.patch('/clientes/:id', requireAuth, async (req, res) => {
   const p = parsed.data;
   const up = await pool.query(
     `update clientes
-     set nombre = $2, direccion = $3, telefono = $4, pedido = $5
+     set nombre = $2, direccion = $3, telefono = $4, pedido = $5, tipo = $6
      where id = $1 and activo = true`,
-    [req.params.id, p.nombre, p.direccion, p.telefono, p.pedido]
+    [req.params.id, p.nombre, p.direccion, p.telefono, p.pedido, p.tipo]
   );
   if (up.rowCount === 0) {
     res.status(404).json({ error: 'Cliente no encontrado.' });
     return;
   }
-  res.json({ ok: true, cliente: { id: req.params.id, ...p } });
+  res.json({
+    ok: true,
+    cliente: {
+      id: req.params.id,
+      nombre: p.nombre,
+      direccion: p.direccion,
+      telefono: p.telefono,
+      pedido: p.pedido,
+      tipo: p.tipo,
+    },
+  });
 });
 
 clientesRouter.delete('/clientes/:id', requireAuth, async (req, res) => {

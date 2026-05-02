@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { Alert } from 'react-native';
 
 import { optimizarRuta } from '@/hooks/useRuta';
-import { obtenerPedidosAdmin } from '@/services/adminPedidos';
+import { actualizarEstadoPedidoAdmin, obtenerPedidosAdmin } from '@/services/adminPedidos';
 import { registrarCierreJornadaApi, registrarEntregaApi } from '@/services/entregasApi';
 import { detenerGPS, iniciarGPS } from '@/services/gps';
 import type { Cliente, Coordenadas, EstadoEntrega, PedidoAdmin, Usuario } from '@/types';
@@ -231,6 +231,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
       tiempoParadaSegundos: tiempo,
     });
     if (jornadaId && usuario?.id) {
+      void actualizarEstadoPedidoAdmin(c.id, 'entregado', { jornadaId }).catch((err) => {
+        const msg = err instanceof Error ? err.message : 'No se pudo actualizar el estado del pedido.';
+        Alert.alert('Pedido no actualizado', msg);
+      });
       void registrarEntregaApi({
         jornadaId,
         repartidorId: usuario.id,
@@ -257,6 +261,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
       notasRepartidor: nota,
     });
     if (jornadaId && usuario?.id) {
+      void actualizarEstadoPedidoAdmin(c.id, 'cancelado', { jornadaId }).catch((err) => {
+        const msg = err instanceof Error ? err.message : 'No se pudo actualizar el estado del pedido.';
+        Alert.alert('Pedido no actualizado', msg);
+      });
       void registrarEntregaApi({
         jornadaId,
         repartidorId: usuario.id,
