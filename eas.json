@@ -1,9 +1,30 @@
 {
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
   "build": {
     "preview": {
+      "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://app-de-reparto-del-centro-production.up.railway.app",
+        "EXPO_PUBLIC_ENV": "production"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://app-de-reparto-del-centro-production.up.railway.app",
+        "EXPO_PUBLIC_ENV": "production"
       }
     }
+  },
+  "submit": {
+    "production": {}
   }
 }

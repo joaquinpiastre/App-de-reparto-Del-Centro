@@ -6,17 +6,19 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "build:apk": "eas build --platform android --profile preview --non-interactive"
   },
   "dependencies": {
     "@expo-google-fonts/poppins": "^0.4.1",
     "@expo/vector-icons": "^15.0.2",
     "@op-engineering/op-sqlite": "^15.2.7",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-navigation/bottom-tabs": "^7.8.0",
     "@react-navigation/stack": "^7.8.9",
+    "babel-plugin-module-resolver": "^5.0.3",
     "date-fns": "^4.1.0",
     "expo": "^54.0.33",
-    "babel-plugin-module-resolver": "^5.0.3",
     "expo-camera": "~17.0.10",
     "expo-constants": "~18.0.13",
     "expo-document-picker": "~14.0.8",

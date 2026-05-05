@@ -13,6 +13,7 @@ import { stackRouterOverride } from '@/lib/stackRouterOverride';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { inicializarNotificaciones } from '@/services/notificaciones';
 import { restaurarSesionApi } from '@/services/authApi';
@@ -88,11 +89,12 @@ export default function RootLayout() {
   if (!sesionLista) return null;
 
   return (
-    <GestureHandlerRootView
-      style={Platform.OS === 'web' ? styles.rootWeb : styles.root}
-    >
-      <StatusBar style="light" />
-      <RootNav
+    <SafeAreaProvider>
+      <GestureHandlerRootView
+        style={Platform.OS === 'web' ? styles.rootWeb : styles.root}
+      >
+        <StatusBar style="light" />
+        <RootNav
         detachInactiveScreens={false}
         initialRouteName="(auth)/login"
         screenOptions={
@@ -106,7 +108,8 @@ export default function RootLayout() {
         }
         {...stackExtras}
       />
-    </GestureHandlerRootView>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
 

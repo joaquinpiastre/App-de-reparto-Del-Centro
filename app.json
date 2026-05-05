@@ -41,6 +41,12 @@
     "plugins": [
       "expo-router",
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "da6dabb8-152d-445e-86ee-17bfb8bf7a44"
+      }
+    },
+    "owner": "joacopiastre"
   }
 }

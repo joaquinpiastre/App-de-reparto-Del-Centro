@@ -15,8 +15,10 @@ import { Button } from '@/components/ui/Button';
 import { COLORS } from '@/constants/colors';
 import { loginApi } from '@/services/authApi';
 import { useAppStore } from '@/store/useAppStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function LoginScreen() {
+  const insets = useSafeAreaInsets();
   const [usuario, setUsuarioInput] = useState('');
   const [pin, setPin] = useState('');
   const setUsuarioGlobal = useAppStore((s) => s.setUsuario);
@@ -52,7 +54,13 @@ export default function LoginScreen() {
     <View style={styles.container}>
       <View style={styles.gradientTop} />
       <View style={styles.gradientBottom} />
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.center}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={[
+          styles.center,
+          Platform.OS !== 'web' ? { paddingTop: insets.top + 8, paddingBottom: Math.max(insets.bottom, 16) } : null,
+        ]}
+      >
         <LogoDelCentro size={120} />
         <Text style={styles.titulo}>Sistema de Reparto</Text>
         {Platform.OS === 'web' ? (

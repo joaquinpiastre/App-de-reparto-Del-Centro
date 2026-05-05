@@ -44,7 +44,8 @@ export function MapaRealtime({ posicion, tituloMarcador = 'Dispositivo', telefon
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    html, body, #map { height: 100%; margin: 0; }
+    html, body { height: 100%; margin: 0; padding: 0; }
+    #map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
     .popup { font-family: Arial, sans-serif; font-size: 12px; }
   </style>
 </head>
@@ -98,7 +99,9 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     borderRadius: 16,
     width: '100%',
+    height: 420,
     minHeight: 380,
+    display: 'block' as const,
     backgroundColor: '#e8eef0',
   },
   footerHint: {

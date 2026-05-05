@@ -1,5 +1,7 @@
 import { Children, isValidElement, type PropsWithChildren } from 'react';
-import { Platform, SafeAreaView, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { COLORS } from '@/constants/colors';
 
 interface Props extends PropsWithChildren {
@@ -9,10 +11,14 @@ interface Props extends PropsWithChildren {
 
 export function Screen({ title, subtitle, children }: Props) {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
   const isCompact = width < 420;
   const bodyHorizontal = isCompact ? 12 : 16;
   const maxBodyWidth = width >= 1360 ? 1180 : width >= 1024 ? 1040 : 960;
+  /** Espacio bajo la barra de estado / notch; en web solo padding visual. */
+  const headerPaddingTop = isWeb ? 18 : insets.top + 12;
+  const headerPaddingBottom = isCompact ? 14 : 18;
 
   const spaced = Children.map(children, (child, index) => {
     if (!isValidElement(child)) return child;
@@ -23,13 +29,21 @@ export function Screen({ title, subtitle, children }: Props) {
     );
   });
 
-  // En web, SafeAreaView a veces no reparte altura con Tabs → contenido en blanco.
-  const Root = isWeb ? View : SafeAreaView;
+  const Root = View;
   const rootStyle = isWeb ? [styles.safe, styles.safeWeb] : styles.safe;
 
   return (
     <Root style={rootStyle}>
-      <View style={[styles.header, { paddingHorizontal: bodyHorizontal, paddingVertical: isCompact ? 12 : 16 }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            paddingHorizontal: bodyHorizontal,
+            paddingTop: headerPaddingTop,
+            paddingBottom: headerPaddingBottom,
+          },
+        ]}
+      >
         <Text style={[styles.title, { fontSize: isCompact ? 20 : 24 }]}>{title}</Text>
         {subtitle ? <Text style={[styles.subtitle, { fontSize: isCompact ? 12 : 13 }]}>{subtitle}</Text> : null}
       </View>
@@ -58,7 +72,7 @@ export function Screen({ title, subtitle, children }: Props) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.grisClaro },
   safeWeb: { flex: 1, minHeight: 0, width: '100%', alignSelf: 'stretch' },
-  header: { backgroundColor: COLORS.verdePrincipal, padding: 16 },
+  header: { backgroundColor: COLORS.verdePrincipal },
   title: { color: '#fff', fontFamily: 'Poppins_800ExtraBold' },
   subtitle: { color: '#edf6e6', fontFamily: 'Poppins_400Regular', marginTop: 2 },
   body: { flex: 1, minHeight: 0 },
