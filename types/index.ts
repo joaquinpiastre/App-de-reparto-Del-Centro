@@ -1,6 +1,31 @@
 export type RolUsuario = 'repartidor' | 'admin';
 export type EstadoEntrega = 'pendiente' | 'en_camino' | 'entregado' | 'problema';
 
+/** Cliente del catálogo (taller o cliente final). */
+export interface ClienteCatalogo {
+  id: string;
+  nombre: string;
+  direccion: string;
+  telefono: string;
+  tipo: 'cliente' | 'taller';
+  pedido?: string;
+}
+
+/** Visita asignada por el admin a un repartidor para una fecha. */
+export interface Asignacion {
+  id: string;
+  repartidorId: string;
+  clienteId: string;
+  cliente: ClienteCatalogo;
+  orden: number;
+  estado: EstadoEntrega;
+  notasAdmin?: string;
+  notasRepartidor?: string;
+  horaLlegadaMs?: number;
+  horaSalidaMs?: number;
+  fechaProgramada: string;
+}
+
 export interface Usuario {
   id: string;
   nombre: string;

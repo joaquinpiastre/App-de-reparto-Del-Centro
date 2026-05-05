@@ -2,10 +2,10 @@ import { create } from 'zustand';
 import { Alert } from 'react-native';
 
 import { optimizarRuta } from '@/hooks/useRuta';
-import { actualizarEstadoPedidoAdmin, obtenerPedidosAdmin } from '@/services/adminPedidos';
-import { registrarCierreJornadaApi, registrarEntregaApi } from '@/services/entregasApi';
+import { actualizarEstadoAsignacion, obtenerAsignaciones } from '@/services/asignaciones';
+import { registrarCierreJornadaApi } from '@/services/entregasApi';
 import { detenerGPS, iniciarGPS } from '@/services/gps';
-import type { Cliente, Coordenadas, EstadoEntrega, PedidoAdmin, Usuario } from '@/types';
+import type { Asignacion, Cliente, Coordenadas, EstadoEntrega, Usuario } from '@/types';
 
 import { useHistorialStore } from './useHistorialStore';
 
@@ -19,38 +19,35 @@ function hashToOffset(seed: string): number {
   return ((hash % 1000) - 500) / 100000;
 }
 
-function pedidoToCliente(p: PedidoAdmin, index: number): Cliente {
-  const direccion = p.calles.join(', ').trim() || 'Dirección no informada';
-  const primerItem = p.items[0];
+function asignacionToCliente(a: Asignacion, index: number): Cliente {
   return {
-    id: p.id,
-    nombre: p.titulo || `Pedido ${index + 1}`,
-    direccion,
-    telefono: '-',
-    pedido: primerItem
-      ? `${primerItem.cantidad} x ${primerItem.descripcion}`
-      : `Pedido #${index + 1}`,
+    id: a.id, // se usa el ID de la asignación para actualizar el estado
+    nombre: a.cliente.nombre,
+    direccion: a.cliente.direccion,
+    telefono: a.cliente.telefono,
+    pedido: a.notasAdmin ?? a.cliente.pedido ?? (a.cliente.tipo === 'taller' ? 'Taller' : 'Cliente'),
     coordenadas: {
-      lat: BASE_COORDENADAS.lat + hashToOffset(`${p.id}-lat`),
-      lng: BASE_COORDENADAS.lng + hashToOffset(`${p.id}-lng`),
+      lat: BASE_COORDENADAS.lat + hashToOffset(`${a.clienteId}-lat`),
+      lng: BASE_COORDENADAS.lng + hashToOffset(`${a.clienteId}-lng`),
     },
-    estado: p.estado === 'entregado' ? 'entregado' : p.estado === 'cancelado' ? 'problema' : 'pendiente',
+    estado:
+      a.estado === 'entregado'
+        ? 'entregado'
+        : a.estado === 'problema'
+          ? 'problema'
+          : 'pendiente',
     orden: index + 1,
     estimadoMin: 10,
   };
 }
 
-async function cargarClientesDesdePedidosAdmin(usuario: Usuario | null): Promise<Cliente[]> {
+async function cargarClientesDesdeAsignaciones(usuario: Usuario | null): Promise<Cliente[]> {
   if (!usuario?.id) return [];
-  const pedidos = await obtenerPedidosAdmin();
-  const activos = pedidos
-    .filter(
-      (p) =>
-        p.repartidorId === usuario.id &&
-        (p.estado === 'pendiente' || p.estado === 'asignado' || p.estado === 'en_ruta')
-    )
-    .sort((a, b) => a.creadoEn - b.creadoEn);
-  return activos.map(pedidoToCliente);
+  const asignaciones = await obtenerAsignaciones({ repartidorId: usuario.id });
+  const activas = asignaciones
+    .filter((a) => a.estado === 'pendiente' || a.estado === 'en_camino')
+    .sort((a, b) => a.orden - b.orden);
+  return activas.map(asignacionToCliente);
 }
 
 interface AppStore {
@@ -78,7 +75,7 @@ interface AppStore {
   irAlPrimerPendiente: () => void;
   actualizarCliente: (id: string, patch: Partial<Cliente>) => void;
   marcarClienteEstado: (id: string, estado: EstadoEntrega) => void;
-  completarEntregaActual: (opts: { firmaBase64: string; tiempoParadaSegundos?: number }) => void;
+  completarVisitaActual: (opts?: { notasRepartidor?: string }) => void;
   reportarProblemaActual: (nota?: string) => void;
 }
 
@@ -94,11 +91,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
   cargando: false,
   fotoPendienteUri: null,
   entregaTimerSegundos: 0,
+
   setUsuario: (usuario) => set({ usuario }),
   setClientesDelDia: (clientes) => set({ clientesDelDia: clientes }),
   setUltimaPosicion: (c) => set({ ultimaPosicion: c }),
   setFotoPendienteUri: (uri) => set({ fotoPendienteUri: uri }),
   setEntregaTimerSegundos: (n) => set({ entregaTimerSegundos: n }),
+
   iniciarJornada: async () => {
     const { usuario } = get();
     if (!usuario?.id) {
@@ -108,15 +107,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const jornadaId = `jor-${Date.now()}`;
     let clientes: Cliente[] = [];
     try {
-      const clientesAdmin = await cargarClientesDesdePedidosAdmin(usuario);
-      if (clientesAdmin.length > 0) {
-        clientes = optimizarRuta(clientesAdmin);
+      const clientesAsignados = await cargarClientesDesdeAsignaciones(usuario);
+      if (clientesAsignados.length > 0) {
+        clientes = optimizarRuta(clientesAsignados);
       }
     } catch (err) {
-      console.warn('cargarClientesDesdePedidosAdmin:', err);
+      console.warn('cargarClientesDesdeAsignaciones:', err);
     }
     if (clientes.length === 0) {
-      Alert.alert('Sin rutas asignadas', 'No tenés pedidos activos asignados por el administrador.');
+      Alert.alert(
+        'Sin clientes asignados',
+        'El administrador todavía no te asignó clientes para hoy.'
+      );
       return;
     }
     set({
@@ -135,10 +137,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
       );
     }
   },
+
   pausarJornada: async () => {
     set({ gpsActivo: false });
     await detenerGPS().catch((err) => console.warn('detenerGPS:', err));
   },
+
   cerrarJornada: async () => {
     const { usuario, clientesDelDia, jornadaInicioEpoch, jornadaActiva, jornadaId } = get();
     if (jornadaActiva && jornadaInicioEpoch) {
@@ -179,6 +183,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     });
     await detenerGPS().catch((err) => console.warn('detenerGPS:', err));
   },
+
   resetSesion: () => {
     set({
       usuario: null,
@@ -194,89 +199,72 @@ export const useAppStore = create<AppStore>((set, get) => ({
       entregaTimerSegundos: 0,
     });
   },
+
   siguienteCliente: () => {
     const { clienteActualIndex, clientesDelDia } = get();
     const next = Math.min(clienteActualIndex + 1, Math.max(clientesDelDia.length - 1, 0));
     set({ clienteActualIndex: next });
   },
+
   irAlPrimerPendiente: () => {
     const { clientesDelDia } = get();
-    const idx = clientesDelDia.findIndex((c) => c.estado === 'pendiente' || c.estado === 'en_camino');
+    const idx = clientesDelDia.findIndex(
+      (c) => c.estado === 'pendiente' || c.estado === 'en_camino'
+    );
     if (idx >= 0) set({ clienteActualIndex: idx });
   },
+
   actualizarCliente: (id, patch) => {
     set((s) => ({
       clientesDelDia: s.clientesDelDia.map((c) => (c.id === id ? { ...c, ...patch } : c)),
     }));
   },
+
   marcarClienteEstado: (id, estado) => {
     get().actualizarCliente(id, { estado });
   },
-  completarEntregaActual: ({ firmaBase64, tiempoParadaSegundos }) => {
+
+  // id del cliente === id de la asignación (ver asignacionToCliente)
+  completarVisitaActual: (opts) => {
     const {
       clienteActualIndex,
       clientesDelDia,
       fotoPendienteUri,
       entregaTimerSegundos,
       jornadaId,
-      usuario,
     } = get();
     const c = clientesDelDia[clienteActualIndex];
     if (!c) return;
-    const tiempo = tiempoParadaSegundos ?? entregaTimerSegundos;
     get().actualizarCliente(c.id, {
       estado: 'entregado',
-      firmaBase64,
       fotoEntregaUri: fotoPendienteUri ?? c.fotoEntregaUri,
-      tiempoParadaSegundos: tiempo,
+      tiempoParadaSegundos: entregaTimerSegundos,
+      notasRepartidor: opts?.notasRepartidor,
     });
-    if (jornadaId && usuario?.id) {
-      void actualizarEstadoPedidoAdmin(c.id, 'entregado', { jornadaId }).catch((err) => {
-        const msg = err instanceof Error ? err.message : 'No se pudo actualizar el estado del pedido.';
-        Alert.alert('Pedido no actualizado', msg);
-      });
-      void registrarEntregaApi({
-        jornadaId,
-        repartidorId: usuario.id,
-        clienteId: c.id,
-        estado: 'entregado',
-        horaEntrega: Date.now(),
-        tiempoParadaSegundos: tiempo,
-        firmaBase64,
-        fotoUrl: fotoPendienteUri ?? undefined,
-      }).catch((err) => {
-        const msg = err instanceof Error ? err.message : 'No se pudo enviar la entrega al backend.';
-        Alert.alert('Entrega no sincronizada', msg);
-      });
-    }
+    void actualizarEstadoAsignacion(c.id, 'entregado', {
+      notasRepartidor: opts?.notasRepartidor,
+      horaSalidaMs: Date.now(),
+      jornadaId: jornadaId ?? undefined,
+    }).catch((err) => {
+      const msg = err instanceof Error ? err.message : 'No se pudo actualizar la visita.';
+      Alert.alert('Visita no sincronizada', msg);
+    });
     set({ fotoPendienteUri: null });
     get().siguienteCliente();
   },
+
   reportarProblemaActual: (nota) => {
-    const { clienteActualIndex, clientesDelDia, jornadaId, usuario } = get();
+    const { clienteActualIndex, clientesDelDia, jornadaId } = get();
     const c = clientesDelDia[clienteActualIndex];
     if (!c) return;
-    get().actualizarCliente(c.id, {
-      estado: 'problema',
+    get().actualizarCliente(c.id, { estado: 'problema', notasRepartidor: nota });
+    void actualizarEstadoAsignacion(c.id, 'problema', {
       notasRepartidor: nota,
+      jornadaId: jornadaId ?? undefined,
+    }).catch((err) => {
+      const msg = err instanceof Error ? err.message : 'No se pudo reportar el problema.';
+      Alert.alert('Incidencia no sincronizada', msg);
     });
-    if (jornadaId && usuario?.id) {
-      void actualizarEstadoPedidoAdmin(c.id, 'cancelado', { jornadaId }).catch((err) => {
-        const msg = err instanceof Error ? err.message : 'No se pudo actualizar el estado del pedido.';
-        Alert.alert('Pedido no actualizado', msg);
-      });
-      void registrarEntregaApi({
-        jornadaId,
-        repartidorId: usuario.id,
-        clienteId: c.id,
-        estado: 'problema',
-        horaEntrega: Date.now(),
-        notasRepartidor: nota,
-      }).catch((err) => {
-        const msg = err instanceof Error ? err.message : 'No se pudo enviar la incidencia al backend.';
-        Alert.alert('Incidencia no sincronizada', msg);
-      });
-    }
     get().siguienteCliente();
   },
 }));

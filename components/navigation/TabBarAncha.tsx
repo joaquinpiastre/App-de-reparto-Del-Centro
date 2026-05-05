@@ -6,15 +6,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 type Props = BottomTabBarProps & { style?: StyleProp<ViewStyle> };
 
 /**
- * Barra inferior a todo el ancho: cada pestaña ocupa el mismo espacio (flex) y
- * se suma altura + padding para que ícono y texto no queden apretados.
+ * Barra inferior a todo el ancho.
+ * En web, viewport-fit=cover (definido en app/+html.tsx) permite que
+ * useSafeAreaInsets() devuelva el inset real de la barra de navegación
+ * del teléfono. Se suma un extra conservador para no quedar al borde.
  */
 export function TabBarAncha({ style, ...props }: Props) {
   const insets = useSafeAreaInsets();
-  const bottom = Math.max(insets.bottom, Platform.OS === 'web' ? 12 : 16);
-  const extraBottom = 14;
-  const padTop = 16;
-  const minContent = Platform.OS === 'web' ? 80 : 88;
+
+  // En web: insets.bottom incluye la barra de nav del teléfono gracias a
+  // viewport-fit=cover. Se asegura un mínimo razonable en caso de que el
+  // browser no lo reporte (ej. Chrome sin gestos en algunos Xiaomi).
+  const safeBottom = Platform.OS === 'web'
+    ? Math.max(insets.bottom, 16)
+    : Math.max(insets.bottom, 16);
+
+  const padTop = 12;
+  const padBottom = safeBottom + 10;
+  const minContent = 54;
 
   return (
     <BottomTabBar
@@ -25,9 +34,9 @@ export function TabBarAncha({ style, ...props }: Props) {
         style,
         {
           paddingTop: padTop,
-          paddingBottom: bottom + extraBottom,
+          paddingBottom: padBottom,
           paddingHorizontal: 0,
-          minHeight: padTop + minContent + bottom + extraBottom,
+          minHeight: padTop + minContent + padBottom,
           width: '100%',
           alignSelf: 'stretch',
         },
@@ -38,16 +47,16 @@ export function TabBarAncha({ style, ...props }: Props) {
 
 const styles = StyleSheet.create({
   base: {
-    backgroundColor: '#fff',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#dde3e8',
-    elevation: 16,
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: '#e8ecef',
+    elevation: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
     ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 -4px 12px rgba(0,0,0,0.06)' } as object)
+      ? ({ boxShadow: '0 -2px 16px rgba(0,0,0,0.07)' } as object)
       : null),
   },
 });
