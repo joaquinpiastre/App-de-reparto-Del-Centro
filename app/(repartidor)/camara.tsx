@@ -13,6 +13,7 @@ export default function Camara() {
   const ref = useRef<CameraView>(null);
   const [cargando, setCargando] = useState(false);
   const setFoto = useAppStore((s) => s.setFotoPendienteUri);
+  const completarVisitaActual = useAppStore((s) => s.completarVisitaActual);
 
   if (!permiso?.granted) {
     return (
@@ -35,7 +36,8 @@ export default function Camara() {
       if (photo?.uri) {
         const fotoPayload = photo.base64 ? `data:image/jpeg;base64,${photo.base64}` : photo.uri;
         setFoto(fotoPayload);
-        router.push('/(repartidor)/firma');
+        completarVisitaActual();
+        router.replace('/(repartidor)/ruta-del-dia');
       } else {
         Alert.alert('Cámara', 'No se pudo guardar la foto. Probá de nuevo.');
       }
@@ -50,7 +52,14 @@ export default function Camara() {
     <Screen title="Foto de confirmación" subtitle="Fotografiá el pedido entregado">
       <CameraView ref={ref} style={styles.camera} facing="back" mode="picture" />
       <Button label={cargando ? 'GUARDANDO…' : 'CAPTURAR FOTO'} loading={cargando} onPress={() => void capturar()} />
-      <Button label="Saltar foto" variant="secondary" onPress={() => router.push('/(repartidor)/firma')} />
+      <Button
+        label="Saltar foto"
+        variant="secondary"
+        onPress={() => {
+          completarVisitaActual();
+          router.replace('/(repartidor)/ruta-del-dia');
+        }}
+      />
     </Screen>
   );
 }

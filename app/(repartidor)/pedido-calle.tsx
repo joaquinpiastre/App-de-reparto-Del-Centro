@@ -14,10 +14,11 @@ import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
 import { direccionesMismaCalle, normalizarCalle } from '@/lib/direccion';
+import { obtenerCatalogoProductos } from '@/services/catalogoProductos';
 import { actualizarEstadoPedidoCalle, publicarPedidoCalle, suscribirPedidosCalle } from '@/services/pedidosCalle';
 import { useAppStore } from '@/store/useAppStore';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
-import type { LineaPedidoCalle } from '@/types';
+import type { LineaPedidoCalle, ProductoLista } from '@/types';
 
 function toNumber(value: unknown): number {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -46,6 +47,8 @@ export default function PedidoCalleScreen() {
   const [descManual, setDescManual] = useState('');
   const [precioManual, setPrecioManual] = useState('');
   const [cantidadManual, setCantidadManual] = useState('1');
+  const [catalogo, setCatalogo] = useState<ProductoLista[]>([]);
+  const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
 
   const misPedidos = useMemo(() => {
     if (!usuario?.id) return [];
@@ -59,6 +62,20 @@ export default function PedidoCalleScreen() {
     return suscribirPedidosCalle(() => {});
   }, []);
 
+  useEffect(() => {
+    void obtenerCatalogoProductos().then((cat) => {
+      if (cat?.productos) setCatalogo(cat.productos);
+    });
+  }, []);
+
+  const sugerencias = useMemo(() => {
+    const q = descManual.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return catalogo
+      .filter((p) => p.descripcion.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [catalogo, descManual]);
+
   const clientesMismaCalle = useMemo(() => {
     if (!calleRef.trim()) return [];
     return clientesDelDia
@@ -70,6 +87,12 @@ export default function PedidoCalleScreen() {
     () => lineas.reduce((acc, l) => acc + toNumber(l.subtotal), 0),
     [lineas]
   );
+
+  const seleccionarProducto = (p: ProductoLista) => {
+    setDescManual(p.descripcion);
+    setPrecioManual(String(p.precioUnitario));
+    setMostrarSugerencias(false);
+  };
 
   const agregarLineaManual = () => {
     const descripcion = descManual.trim();
@@ -156,12 +179,11 @@ export default function PedidoCalleScreen() {
   return (
     <Screen
       title="Pedido en la calle"
-      subtitle="Cargá producto y precio a mano; sin listas ni Excel"
+      subtitle="Buscá productos del catálogo o cargá manualmente"
     >
       <FormBody {...formScrollProps}>
         <Text style={styles.help}>
-          No hay catálogo ni importación: escribís el producto y el precio unitario solo en tu teléfono.
-          El local recibe el pedido armado para preparar.
+          Buscá el producto por nombre y el precio se completa solo desde el catálogo. Si no lo encontrás, escribilo manualmente.
         </Text>
 
         <Text style={styles.label}>Calle de referencia</Text>
@@ -186,18 +208,32 @@ export default function PedidoCalleScreen() {
 
         <View style={styles.cardDestacada}>
           <Text style={styles.sectionTitle}>Nueva línea del pedido</Text>
-          <Text style={styles.privacyNote}>
-            Producto y precio los cargás vos acá; no usamos lista descargable ni Excel en esta pantalla.
-          </Text>
 
           <Text style={styles.label}>Producto</Text>
           <TextInput
             style={styles.input}
-            placeholder="Descripción del producto"
+            placeholder="Buscá por nombre del producto…"
             placeholderTextColor={COLORS.grisSecundario}
             value={descManual}
-            onChangeText={setDescManual}
+            onChangeText={(t) => {
+              setDescManual(t);
+              setMostrarSugerencias(true);
+            }}
           />
+          {mostrarSugerencias && sugerencias.length > 0 && (
+            <View style={styles.sugerenciasBox}>
+              {sugerencias.map((p) => (
+                <Pressable
+                  key={p.codigo}
+                  style={({ pressed }) => [styles.sugerenciaItem, pressed && styles.sugerenciaPressed]}
+                  onPress={() => seleccionarProducto(p)}
+                >
+                  <Text style={styles.sugerenciaNombre} numberOfLines={2}>{p.descripcion}</Text>
+                  <Text style={styles.sugerenciaPrecio}>${fmtMoney(p.precioUnitario)}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
 
           <Text style={styles.label}>Precio unitario</Text>
           <TextInput
@@ -431,4 +467,38 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   retiradoWrap: { marginTop: 12 },
+
+  sugerenciasBox: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: COLORS.verdePrincipal,
+    borderRadius: 12,
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  sugerenciaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    gap: 8,
+  },
+  sugerenciaPressed: {
+    backgroundColor: '#f5faf2',
+  },
+  sugerenciaNombre: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 15,
+    color: COLORS.grisTexto,
+    flex: 1,
+    lineHeight: 20,
+  },
+  sugerenciaPrecio: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 15,
+    color: COLORS.verdeOscuro,
+  },
 });
