@@ -17,33 +17,31 @@ export default function MapaVivo() {
   const [avisoApi, setAvisoApi] = useState<string | null>(null);
 
   useEffect(() => {
-    if (Platform.OS === 'web') {
-      return suscribirTelefonosGps(
-        (lista, meta) => {
-          setTelefonos(lista);
-          setError(null);
-          setAvisoApi(meta?.advertencia ?? null);
-        },
-        (msg) => setError(msg)
-      );
-    }
+    // Suscribir al feed de repartidores en todas las plataformas
+    const unsub = suscribirTelefonosGps(
+      (lista, meta) => {
+        setTelefonos(lista);
+        setError(null);
+        setAvisoApi(meta?.advertencia ?? null);
+      },
+      (msg) => setError(msg)
+    );
 
+    if (Platform.OS === 'web') return unsub;
+
+    // En móvil: también trackear posición propia del dispositivo
     let sub: Location.LocationSubscription | undefined;
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setError('Sin permiso de ubicación.');
-        return;
-      }
+      if (status !== 'granted') return;
       sub = await Location.watchPositionAsync(
         { accuracy: Location.Accuracy.Balanced, timeInterval: 8000, distanceInterval: 25 },
-        (loc) => {
-          const p = { lat: loc.coords.latitude, lng: loc.coords.longitude };
-          setUltima(p);
-        }
+        (loc) => setUltima({ lat: loc.coords.latitude, lng: loc.coords.longitude })
       );
     })();
+
     return () => {
+      unsub();
       sub?.remove();
     };
   }, [setUltima]);
@@ -51,16 +49,12 @@ export default function MapaVivo() {
   return (
     <Screen
       title="Mapa en tiempo real"
-      subtitle={
-        Platform.OS === 'web'
-          ? `Teléfonos en reparto detectados: ${telefonos.length}`
-          : 'Posición aproximada del dispositivo'
-      }
+      subtitle={`Repartidores en reparto: ${telefonos.length}`}
     >
       {avisoApi ? <Text style={styles.aviso}>{avisoApi}</Text> : null}
       {error ? <Text style={styles.err}>{error}</Text> : null}
       <MapaRealtime posicion={ultima} tituloMarcador="Este dispositivo" telefonos={telefonos} />
-      {Platform.OS === 'web' && telefonos.length > 0 ? (
+      {telefonos.length > 0 ? (
         <View style={styles.list}>
           {telefonos.map((t) => (
             <Text key={t.id} style={styles.item}>
@@ -71,7 +65,7 @@ export default function MapaVivo() {
         </View>
       ) : null}
       <Text style={styles.legend}>
-        La web lee ubicaciones desde la API (`/gps/live`) y actualiza cada 3s.
+        Ubicaciones desde la API · actualiza cada 3s
       </Text>
     </Screen>
   );
