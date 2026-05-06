@@ -438,7 +438,7 @@ export default function PedidosCalleAdmin() {
               <Text style={styles.row}>
                 <Text style={styles.estadoBadge}>Estado: {p.estado}</Text>
                 {' · '}
-                Total ${p.total.toFixed(2)}
+                Total ${Number(p.total ?? 0).toFixed(2)}
               </Text>
               {(p.items ?? []).map((it, idx) => (
                 <Text key={`${p.id}-it-${idx}`} style={styles.itemLine}>
@@ -518,7 +518,7 @@ export default function PedidosCalleAdmin() {
                 onPress={() => seleccionarProducto(p)}
               >
                 <Text style={styles.sugerenciaNombre} numberOfLines={2}>{p.descripcion}</Text>
-                <Text style={styles.sugerenciaPrecio}>${p.precioUnitario.toFixed(2)}</Text>
+                <Text style={styles.sugerenciaPrecio}>${Number(p.precioUnitario ?? 0).toFixed(2)}</Text>
               </Pressable>
             ))}
           </View>
@@ -542,10 +542,10 @@ export default function PedidosCalleAdmin() {
         </View>
         {items.map((it, i) => (
           <Text key={`${it.descripcion}-${i}`} style={styles.itemLine}>
-            {it.cantidad} × {it.descripcion} (${it.subtotal.toFixed(2)})
+            {it.cantidad} × {it.descripcion} (${Number(it.subtotal ?? 0).toFixed(2)})
           </Text>
         ))}
-        <Text style={styles.total}>Total: ${total.toFixed(2)}</Text>
+        <Text style={styles.total}>Total: ${Number(total ?? 0).toFixed(2)}</Text>
         <TextInput
           style={[styles.input, styles.multiline]}
           placeholder="Notas opcionales"
@@ -601,11 +601,11 @@ export default function PedidosCalleAdmin() {
               <Text style={styles.title}>
                 {item.titulo} · {fmtFecha(item.creadoEn)}
               </Text>
-              <Text style={styles.row}>Estado: {item.estado} · Total ${item.total.toFixed(2)}</Text>
+              <Text style={styles.row}>Estado: {item.estado} · Total ${Number(item.total ?? 0).toFixed(2)}</Text>
               <Text style={styles.row}>Calles: {item.calles.join(', ')}</Text>
               {item.items.map((l, i) => (
                 <Text key={`${item.id}-l-${i}`} style={styles.itemLine}>
-                  {l.cantidad} × {l.descripcion} (${l.subtotal.toFixed(2)})
+                  {l.cantidad} × {l.descripcion} (${Number(l.subtotal ?? 0).toFixed(2)})
                 </Text>
               ))}
               {item.notas ? <Text style={styles.notas}>Nota: {item.notas}</Text> : null}

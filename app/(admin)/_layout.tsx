@@ -33,7 +33,7 @@ export default function AdminLayout() {
       ultimaNotificada.current = top.id;
       void notificacionLocal(
         'Nuevo pedido en calle',
-        `${top.calleMostrada} · ${top.repartidorNombre} · $${top.total.toFixed(0)}`
+        `${top.calleMostrada} · ${top.repartidorNombre} · $${Number(top.total ?? 0).toFixed(0)}`
       );
     }
   }, [pedidos, usuario]);
