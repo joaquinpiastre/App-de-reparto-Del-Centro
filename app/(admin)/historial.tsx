@@ -13,6 +13,8 @@ import {
   type PedidoJornadaHistorial,
   type RecorridoJornadaResponse,
 } from '@/services/adminReportes';
+import { obtenerPedidosCalleFinalizados } from '@/services/pedidosCalle';
+import type { PedidoCalle } from '@/types';
 import type { CierreJornadaResumen } from '@/store/useHistorialStore';
 
 function normalizeMediaUri(value?: string | null): string | null {
@@ -39,6 +41,8 @@ export default function Historial() {
   const [loadingEntregas, setLoadingEntregas] = useState(false);
   const [pedidosJornada, setPedidosJornada] = useState<PedidoJornadaHistorial[]>([]);
   const [entregasJornada, setEntregasJornada] = useState<EntregaJornadaHistorial[]>([]);
+  const [pedidosCalleFinalizados, setPedidosCalleFinalizados] = useState<PedidoCalle[]>([]);
+  const [loadingPedidosCalle, setLoadingPedidosCalle] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const cargar = async () => {
@@ -57,8 +61,21 @@ export default function Historial() {
     }
   };
 
+  const cargarPedidosCalle = async () => {
+    try {
+      setLoadingPedidosCalle(true);
+      const data = await obtenerPedidosCalleFinalizados();
+      setPedidosCalleFinalizados(data.sort((a, b) => b.creadoEn - a.creadoEn));
+    } catch {
+      setPedidosCalleFinalizados([]);
+    } finally {
+      setLoadingPedidosCalle(false);
+    }
+  };
+
   useEffect(() => {
     void cargar();
+    void cargarPedidosCalle();
   }, []);
 
   useEffect(() => {
@@ -107,7 +124,7 @@ export default function Historial() {
           label={loading ? 'ACTUALIZANDO…' : 'ACTUALIZAR'}
           variant="secondary"
           loading={loading}
-          onPress={() => void cargar()}
+          onPress={() => { void cargar(); void cargarPedidosCalle(); }}
         />
       </View>
       {error ? (
@@ -218,6 +235,39 @@ export default function Historial() {
           ))}
         </View>
       ) : null}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Pedidos de calle finalizados</Text>
+        <Text style={styles.row}>Pedidos que los repartidores levantaron en la calle y ya fueron retirados o cancelados.</Text>
+        {loadingPedidosCalle ? (
+          <Text style={styles.row}>Cargando…</Text>
+        ) : pedidosCalleFinalizados.length === 0 ? (
+          <Text style={styles.row}>Sin pedidos de calle finalizados aún.</Text>
+        ) : (
+          pedidosCalleFinalizados.map((p) => (
+            <View key={p.id} style={[styles.subCard, p.estado === 'cancelado' && styles.subCardCancelado]}>
+              <View style={styles.pcRepartidorTag}>
+                <Text style={styles.pcRepartidorTagText}>{p.repartidorNombre}</Text>
+              </View>
+              <Text style={styles.title}>{p.calleMostrada}</Text>
+              <Text style={styles.row}>
+                {new Date(p.creadoEn).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                {' · '}
+                <Text style={p.estado === 'retirado' ? styles.estadoRetirado : styles.estadoCancelado}>
+                  {p.estado === 'retirado' ? 'Retirado' : 'Cancelado'}
+                </Text>
+                {' · Total $'}{Number(p.total ?? 0).toFixed(2)}
+              </Text>
+              {p.items.map((it, idx) => (
+                <Text key={`${p.id}-${idx}`} style={styles.row}>
+                  · {it.cantidad} x {it.descripcion} · ${Number(it.subtotal ?? 0).toFixed(2)}
+                </Text>
+              ))}
+              {p.notas ? <Text style={styles.row}>Nota: {p.notas}</Text> : null}
+            </View>
+          ))
+        )}
+      </View>
+
       {entregasJornada.length > 0 ? (
         <View style={styles.card}>
           <Text style={styles.title}>Entregas completas del turno seleccionado</Text>
@@ -271,9 +321,22 @@ const styles = StyleSheet.create({
   actionBtn: { minWidth: 150, flex: 1 },
   card: { backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 10 },
   subCard: { backgroundColor: '#f9f9f9', borderRadius: 12, padding: 10, marginTop: 8 },
+  subCardCancelado: { backgroundColor: '#fff5f5' },
   mediaBlock: { marginTop: 8 },
   media: { width: '100%', height: 180, borderRadius: 10, backgroundColor: '#eef2f5' },
   errorCard: { borderWidth: 1, borderColor: '#e06a6a', backgroundColor: '#fff3f3' },
+  sectionTitle: { fontFamily: 'Poppins_700Bold', fontSize: 16, marginBottom: 6 },
   title: { fontFamily: 'Poppins_700Bold' },
   row: { fontFamily: 'Poppins_400Regular', marginTop: 4 },
+  pcRepartidorTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#e8f5e9',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 4,
+  },
+  pcRepartidorTagText: { fontFamily: 'Poppins_600SemiBold', fontSize: 12, color: '#2e7d52' },
+  estadoRetirado: { fontFamily: 'Poppins_600SemiBold', color: '#2e7d52' },
+  estadoCancelado: { fontFamily: 'Poppins_600SemiBold', color: '#c0392b' },
 });

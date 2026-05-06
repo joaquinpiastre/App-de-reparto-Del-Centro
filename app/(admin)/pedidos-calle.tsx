@@ -19,7 +19,7 @@ import { actualizarEstadoPedidoCalle, suscribirPedidosCalle } from '@/services/p
 import { useAppStore } from '@/store/useAppStore';
 import { useAdminPedidosStore } from '@/store/useAdminPedidosStore';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
-import type { EstadoPedidoCalle, PedidoAdmin, PedidoAdminItem, PedidoCalle, ProductoLista, Usuario } from '@/types';
+import type { PedidoAdmin, PedidoAdminItem, PedidoCalle, ProductoLista, Usuario } from '@/types';
 
 function fmtFecha(ts: number) {
   try {
@@ -57,7 +57,6 @@ export default function PedidosCalleAdmin() {
   const [catalogo, setCatalogo] = useState<ProductoLista[]>([]);
   const [catalogoMeta, setCatalogoMeta] = useState<{ nombreArchivo: string | null; updatedAt: string | null } | null>(null);
   const [subiendoCatalogo, setSubiendoCatalogo] = useState(false);
-  const [filtroPedidosCalle, setFiltroPedidosCalle] = useState<'todos' | 'activos'>('todos');
 
   const avisar = (titulo: string, msg: string, tipo: 'ok' | 'error' = 'error') => {
     setFeedback({ tipo, msg });
@@ -117,31 +116,13 @@ export default function PedidosCalleAdmin() {
         .sort((a, b) => b.creadoEn - a.creadoEn),
     [lista]
   );
-  const pedidosCalleOrdenados = useMemo(
-    () => [...pedidosCalle].sort((a, b) => b.creadoEn - a.creadoEn),
+  const pedidosCalleActivos = useMemo(
+    () =>
+      [...pedidosCalle]
+        .filter((p) => p.estado !== 'retirado' && p.estado !== 'cancelado')
+        .sort((a, b) => b.creadoEn - a.creadoEn),
     [pedidosCalle]
   );
-  const resumenPedidosCalle = useMemo(() => {
-    const c: Record<EstadoPedidoCalle, number> = {
-      pendiente: 0,
-      visto: 0,
-      armado: 0,
-      retirado: 0,
-      cancelado: 0,
-    };
-    for (const p of pedidosCalle) {
-      c[p.estado] += 1;
-    }
-    return c;
-  }, [pedidosCalle]);
-  const pedidosCalleVista = useMemo(() => {
-    if (filtroPedidosCalle === 'activos') {
-      return pedidosCalleOrdenados.filter(
-        (p) => p.estado !== 'retirado' && p.estado !== 'cancelado'
-      );
-    }
-    return pedidosCalleOrdenados;
-  }, [pedidosCalleOrdenados, filtroPedidosCalle]);
 
   const esEstadoFinal = (e: EstadoPedidoCalle) => e === 'retirado' || e === 'cancelado';
 
@@ -392,49 +373,28 @@ export default function PedidosCalleAdmin() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionHeading}>Pedidos levantados en la calle</Text>
+        <Text style={styles.sectionHeading}>Pedidos en calle</Text>
         <Text style={styles.rowMuted}>
-          Listado completo de lo que cargan los repartidores desde la app. Total en sistema:{' '}
-          {pedidosCalle.length}.
+          Pedidos activos que los repartidores levantaron en la calle. Los finalizados aparecen en el Historial.
         </Text>
         <Text style={styles.row}>
-          Pendientes: {resumenPedidosCalle.pendiente} · Vistos: {resumenPedidosCalle.visto} · Armados:{' '}
-          {resumenPedidosCalle.armado} · Retirados: {resumenPedidosCalle.retirado} · Cancelados:{' '}
-          {resumenPedidosCalle.cancelado}
+          Activos: {pedidosCalleActivos.length} · Total en sistema: {pedidosCalle.length}
         </Text>
-        <View style={styles.filtrosRow}>
-          <Pressable
-            onPress={() => setFiltroPedidosCalle('todos')}
-            style={[styles.filtroChip, filtroPedidosCalle === 'todos' && styles.filtroChipOn]}
-          >
-            <Text style={[styles.filtroChipTxt, filtroPedidosCalle === 'todos' && styles.filtroChipTxtOn]}>
-              Todos ({pedidosCalle.length})
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setFiltroPedidosCalle('activos')}
-            style={[styles.filtroChip, filtroPedidosCalle === 'activos' && styles.filtroChipOn]}
-          >
-            <Text style={[styles.filtroChipTxt, filtroPedidosCalle === 'activos' && styles.filtroChipTxtOn]}>
-              Solo activos (
-              {pedidosCalle.filter((x) => x.estado !== 'retirado' && x.estado !== 'cancelado').length})
-            </Text>
-          </Pressable>
-        </View>
 
-        {pedidosCalleVista.length === 0 ? (
+        {pedidosCalleActivos.length === 0 ? (
           <Text style={styles.empty}>
             {pedidosCalle.length === 0
               ? 'Todavía no hay pedidos desde la calle.'
-              : 'Nada que mostrar con este filtro.'}
+              : 'No hay pedidos activos. Los finalizados están en el Historial.'}
           </Text>
         ) : (
-          pedidosCalleVista.map((p) => (
+          pedidosCalleActivos.map((p) => (
             <View key={p.id} style={styles.cardMini}>
               <Text style={styles.fechaCalle}>{fmtFecha(p.creadoEn)}</Text>
-              <Text style={styles.title}>
-                {p.repartidorNombre} · {p.calleMostrada}
-              </Text>
+              <View style={styles.repartidorTag}>
+                <Text style={styles.repartidorTagText}>{p.repartidorNombre}</Text>
+              </View>
+              <Text style={styles.title}>{p.calleMostrada}</Text>
               <Text style={styles.row}>
                 <Text style={styles.estadoBadge}>Estado: {p.estado}</Text>
                 {' · '}
@@ -677,21 +637,19 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 8,
   },
-  filtrosRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  filtroChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#c8d4cc',
-    backgroundColor: '#fff',
+  repartidorTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#e8f5e9',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 4,
   },
-  filtroChipOn: {
-    borderColor: COLORS.verdeOscuro,
-    backgroundColor: '#ecfdf3',
+  repartidorTagText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 12,
+    color: COLORS.verdeOscuro,
   },
-  filtroChipTxt: { fontFamily: 'Poppins_600SemiBold', fontSize: 14, color: COLORS.grisTexto },
-  filtroChipTxtOn: { color: COLORS.verdeOscuro },
   fechaCalle: {
     fontFamily: 'Poppins_500Medium',
     fontSize: 13,

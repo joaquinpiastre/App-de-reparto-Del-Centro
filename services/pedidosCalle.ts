@@ -32,6 +32,16 @@ export async function actualizarEstadoPedidoCalle(id: string, estado: EstadoPedi
   });
 }
 
+export async function obtenerPedidosCalleFinalizados(): Promise<PedidoCalle[]> {
+  if (!API_ENABLED) {
+    return usePedidosCalleStore.getState().pedidos.filter(
+      (p) => p.estado === 'retirado' || p.estado === 'cancelado'
+    );
+  }
+  const data = await apiRequest<{ pedidos: PedidoCalle[] }>('/pedidos-calle');
+  return data.pedidos.filter((p) => p.estado === 'retirado' || p.estado === 'cancelado');
+}
+
 export function suscribirPedidosCalle(onChange: (list: PedidoCalle[]) => void): () => void {
   if (API_ENABLED) {
     const load = async () => {
