@@ -23,9 +23,13 @@ async function ensureTable(): Promise<void> {
       hora_llegada_ms   BIGINT,
       hora_salida_ms    BIGINT,
       fecha_programada  DATE NOT NULL DEFAULT CURRENT_DATE,
-      creado_en         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (repartidor_id, cliente_id, fecha_programada)
+      creado_en         TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+  // Permite múltiples visitas al mismo cliente en el mismo día
+  await pool.query(`
+    ALTER TABLE asignaciones
+    DROP CONSTRAINT IF EXISTS asignaciones_repartidor_id_cliente_id_fecha_programada_key
   `);
 }
 
@@ -126,8 +130,7 @@ asignacionesRouter.post('/asignaciones/bulk', requireAuth, async (req, res) => {
     const id = `asig-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const result = await pool.query(
       `INSERT INTO asignaciones (id, repartidor_id, cliente_id, orden, fecha_programada, notas_admin)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (repartidor_id, cliente_id, fecha_programada) DO NOTHING`,
+       VALUES ($1, $2, $3, $4, $5, $6)`,
       [id, repartidorId, clienteIds[i], i, fecha, notasAdmin ?? null]
     );
     insertados += result.rowCount ?? 0;

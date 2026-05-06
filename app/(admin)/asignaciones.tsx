@@ -42,8 +42,11 @@ export default function Asignaciones() {
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [guardando, setGuardando] = useState(false);
 
-  // IDs de clientes ya asignados al repartidor en esta fecha
-  const idsAsignados = new Set(asignaciones.map((a) => a.clienteId));
+  // Conteo de visitas ya asignadas por cliente
+  const visitasPorCliente = asignaciones.reduce<Record<string, number>>((acc, a) => {
+    acc[a.clienteId] = (acc[a.clienteId] ?? 0) + 1;
+    return acc;
+  }, {});
 
   const cargarRepartidores = useCallback(async () => {
     try {
@@ -201,6 +204,8 @@ export default function Asignaciones() {
           const entregado = a.estado === 'entregado';
           const problema = a.estado === 'problema';
           const enCamino = a.estado === 'en_camino';
+          const visitasDelCliente = asignaciones.filter(x => x.clienteId === a.clienteId).length;
+          const numeroVisita = asignaciones.filter((x, i) => x.clienteId === a.clienteId && i <= idx).length;
           return (
           <View
             key={a.id}
@@ -217,6 +222,11 @@ export default function Asignaciones() {
               <View style={styles.asigInfo}>
                 <View style={styles.asigRow}>
                   <Text style={styles.asigNombre}>{a.cliente.nombre}</Text>
+                  {visitasDelCliente > 1 && (
+                    <View style={styles.visitaBadge}>
+                      <Text style={styles.visitaBadgeText}>Visita {numeroVisita}</Text>
+                    </View>
+                  )}
                   <View style={[styles.tipoBadge, a.cliente.tipo === 'taller' ? styles.badgeTaller : styles.badgeCliente]}>
                     <Text style={styles.tipoText}>{a.cliente.tipo}</Text>
                   </View>
@@ -300,41 +310,35 @@ export default function Asignaciones() {
             keyExtractor={(item) => item.id}
             style={styles.modalList}
             renderItem={({ item }) => {
-              const yaAsignado = idsAsignados.has(item.id);
+              const visitasActuales = visitasPorCliente[item.id] ?? 0;
               const estaSeleccionado = seleccionados.has(item.id);
               return (
                 <Pressable
                   style={[
                     styles.catalogoCard,
                     estaSeleccionado && styles.catalogoCardSel,
-                    yaAsignado && styles.catalogoCardAsignado,
                   ]}
-                  onPress={() => !yaAsignado && toggleSeleccion(item.id)}
-                  disabled={yaAsignado}
+                  onPress={() => toggleSeleccion(item.id)}
                 >
                   <View style={styles.catalogoInfo}>
                     <View style={styles.asigRow}>
-                      <Text style={[styles.catalogoNombre, yaAsignado && styles.textDim]}>
-                        {item.nombre}
-                      </Text>
+                      <Text style={styles.catalogoNombre}>{item.nombre}</Text>
                       <View style={[styles.tipoBadge, item.tipo === 'taller' ? styles.badgeTaller : styles.badgeCliente]}>
                         <Text style={styles.tipoText}>{item.tipo}</Text>
                       </View>
                     </View>
-                    <Text style={[styles.catalogoDir, yaAsignado && styles.textDim]}>
-                      {item.direccion}
-                    </Text>
-                    {yaAsignado && (
-                      <Text style={styles.yaAsignadoText}>Ya asignado</Text>
+                    <Text style={styles.catalogoDir}>{item.direccion}</Text>
+                    {visitasActuales > 0 && (
+                      <Text style={styles.yaAsignadoText}>
+                        {visitasActuales === 1 ? '1 visita asignada' : `${visitasActuales} visitas asignadas`} — podés agregar otra
+                      </Text>
                     )}
                   </View>
-                  {!yaAsignado && (
-                    <MaterialIcons
-                      name={estaSeleccionado ? 'check-circle' : 'radio-button-unchecked'}
-                      size={24}
-                      color={estaSeleccionado ? COLORS.verdeOscuro : '#ccc'}
-                    />
-                  )}
+                  <MaterialIcons
+                    name={estaSeleccionado ? 'check-circle' : 'radio-button-unchecked'}
+                    size={24}
+                    color={estaSeleccionado ? COLORS.verdeOscuro : '#ccc'}
+                  />
                 </Pressable>
               );
             }}
@@ -444,6 +448,13 @@ const styles = StyleSheet.create({
   estadoText: { fontFamily: 'Poppins_600SemiBold', fontSize: 11, color: COLORS.grisTexto },
   asigHora: { fontFamily: 'Poppins_400Regular', fontSize: 11, color: COLORS.grisSecundario },
   asigNotaRep: { fontFamily: 'Poppins_400Regular', fontSize: 11, color: COLORS.grisSecundario, fontStyle: 'italic' },
+  visitaBadge: {
+    backgroundColor: '#e8f0fe',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  visitaBadgeText: { fontFamily: 'Poppins_600SemiBold', fontSize: 10, color: '#3b5bdb' },
 
   // Badges
   tipoBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
