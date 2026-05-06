@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -79,6 +79,17 @@ export default function Asignaciones() {
 
   useEffect(() => {
     void cargarAsignaciones();
+  }, [cargarAsignaciones]);
+
+  // Polling cada 5s para ver entregas en tiempo real
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    pollingRef.current = setInterval(() => {
+      void cargarAsignaciones();
+    }, 5000);
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
   }, [cargarAsignaciones]);
 
   const abrirModal = async () => {
@@ -186,11 +197,22 @@ export default function Asignaciones() {
           </View>
         )}
 
-        {asignaciones.map((a, idx) => (
-          <View key={a.id} style={styles.asigCard}>
+        {asignaciones.map((a, idx) => {
+          const entregado = a.estado === 'entregado';
+          const problema = a.estado === 'problema';
+          const enCamino = a.estado === 'en_camino';
+          return (
+          <View
+            key={a.id}
+            style={[
+              styles.asigCard,
+              entregado && styles.asigCardEntregado,
+              problema && styles.asigCardProblema,
+            ]}
+          >
             <View style={styles.asigLeft}>
-              <View style={styles.asigNumWrap}>
-                <Text style={styles.asigNum}>{idx + 1}</Text>
+              <View style={[styles.asigNumWrap, entregado && styles.asigNumEntregado, problema && styles.asigNumProblema]}>
+                <Text style={[styles.asigNum, (entregado || problema) && { color: '#fff' }]}>{idx + 1}</Text>
               </View>
               <View style={styles.asigInfo}>
                 <View style={styles.asigRow}>
@@ -200,19 +222,39 @@ export default function Asignaciones() {
                   </View>
                 </View>
                 <Text style={styles.asigDir}>{a.cliente.direccion}</Text>
-                {a.notasAdmin ? (
-                  <Text style={styles.asigNota}>{a.notasAdmin}</Text>
-                ) : null}
+                <View style={styles.asigRow}>
+                  <View style={[
+                    styles.estadoBadge,
+                    entregado && styles.estadoEntregado,
+                    problema && styles.estadoProblema,
+                    enCamino && styles.estadoEnCamino,
+                  ]}>
+                    <Text style={[styles.estadoText, (entregado || problema || enCamino) && { color: '#fff' }]}>
+                      {a.estado === 'pendiente' ? 'Pendiente' :
+                       a.estado === 'en_camino' ? 'En camino' :
+                       a.estado === 'entregado' ? '✓ Entregado' : 'Problema'}
+                    </Text>
+                  </View>
+                  {a.horaLlegadaMs ? (
+                    <Text style={styles.asigHora}>
+                      {new Date(a.horaLlegadaMs).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  ) : null}
+                </View>
+                {a.notasAdmin ? <Text style={styles.asigNota}>{a.notasAdmin}</Text> : null}
+                {a.notasRepartidor ? <Text style={styles.asigNotaRep}>"{a.notasRepartidor}"</Text> : null}
               </View>
             </View>
-            <Pressable
-              style={styles.removeBtn}
-              onPress={() => void quitarAsignacion(a.id)}
-            >
-              <MaterialIcons name="close" size={18} color={COLORS.error} />
-            </Pressable>
+            {!entregado ? (
+              <Pressable style={styles.removeBtn} onPress={() => void quitarAsignacion(a.id)}>
+                <MaterialIcons name="close" size={18} color={COLORS.error} />
+              </Pressable>
+            ) : (
+              <MaterialIcons name="check-circle" size={22} color={COLORS.verdePrincipal} />
+            )}
           </View>
-        ))}
+          );
+        })}
       </View>
 
       {repSeleccionado && (
@@ -386,6 +428,22 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   removeBtn: { padding: 6 },
+  asigCardEntregado: { borderColor: '#52c47a', backgroundColor: '#f6fff8' },
+  asigCardProblema: { borderColor: '#e06a6a', backgroundColor: '#fff6f6' },
+  asigNumEntregado: { backgroundColor: COLORS.verdePrincipal },
+  asigNumProblema: { backgroundColor: COLORS.error },
+  estadoBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+  },
+  estadoEntregado: { backgroundColor: COLORS.verdePrincipal },
+  estadoProblema: { backgroundColor: COLORS.error },
+  estadoEnCamino: { backgroundColor: COLORS.acentoAzul },
+  estadoText: { fontFamily: 'Poppins_600SemiBold', fontSize: 11, color: COLORS.grisTexto },
+  asigHora: { fontFamily: 'Poppins_400Regular', fontSize: 11, color: COLORS.grisSecundario },
+  asigNotaRep: { fontFamily: 'Poppins_400Regular', fontSize: 11, color: COLORS.grisSecundario, fontStyle: 'italic' },
 
   // Badges
   tipoBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
