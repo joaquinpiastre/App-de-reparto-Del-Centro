@@ -19,7 +19,7 @@ import { actualizarEstadoPedidoCalle, suscribirPedidosCalle } from '@/services/p
 import { useAppStore } from '@/store/useAppStore';
 import { useAdminPedidosStore } from '@/store/useAdminPedidosStore';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
-import type { EstadoPedidoCalle, PedidoAdmin, PedidoAdminItem, PedidoCalle, Usuario } from '@/types';
+import type { EstadoPedidoCalle, PedidoAdmin, PedidoAdminItem, PedidoCalle, ProductoLista, Usuario } from '@/types';
 
 function fmtFecha(ts: number) {
   try {
@@ -54,6 +54,7 @@ export default function PedidosCalleAdmin() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [feedback, setFeedback] = useState<{ tipo: 'ok' | 'error'; msg: string } | null>(null);
+  const [catalogo, setCatalogo] = useState<ProductoLista[]>([]);
   const [catalogoMeta, setCatalogoMeta] = useState<{ nombreArchivo: string | null; updatedAt: string | null } | null>(null);
   const [subiendoCatalogo, setSubiendoCatalogo] = useState(false);
   const [filtroPedidosCalle, setFiltroPedidosCalle] = useState<'todos' | 'activos'>('todos');
@@ -93,6 +94,18 @@ export default function PedidosCalleAdmin() {
   }, []);
 
   const total = useMemo(() => items.reduce((acc, x) => acc + x.subtotal, 0), [items]);
+
+  const sugerencias = useMemo(() => {
+    const q = descripcion.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return catalogo.filter((p) => p.descripcion.toLowerCase().includes(q)).slice(0, 8);
+  }, [catalogo, descripcion]);
+
+  const seleccionarProducto = (p: ProductoLista) => {
+    setDescripcion(p.descripcion);
+    setPrecio(String(p.precioUnitario));
+  };
+
   const listaPendientes = useMemo(
     () => lista.filter((x) => x.estado === 'pendiente').sort((a, b) => b.creadoEn - a.creadoEn),
     [lista]
@@ -137,6 +150,7 @@ export default function PedidosCalleAdmin() {
       try {
         const c = await obtenerCatalogoProductos();
         if (!c) return;
+        setCatalogo(c.productos);
         setCatalogoMeta({ nombreArchivo: c.nombreArchivo, updatedAt: c.updatedAt });
       } catch {}
     })();
@@ -491,10 +505,24 @@ export default function PedidosCalleAdmin() {
         <Text style={styles.label}>Producto</Text>
         <TextInput
           style={styles.input}
-          placeholder="Descripción"
+          placeholder="Buscá por nombre del producto..."
           value={descripcion}
           onChangeText={setDescripcion}
         />
+        {sugerencias.length > 0 ? (
+          <View style={styles.sugerenciasBox}>
+            {sugerencias.map((p) => (
+              <Pressable
+                key={p.codigo}
+                style={({ pressed }) => [styles.sugerenciaItem, pressed && styles.sugerenciaItemPressed]}
+                onPress={() => seleccionarProducto(p)}
+              >
+                <Text style={styles.sugerenciaNombre} numberOfLines={2}>{p.descripcion}</Text>
+                <Text style={styles.sugerenciaPrecio}>${p.precioUnitario.toFixed(2)}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
         <View style={styles.rowInline}>
           <TextInput
             style={[styles.input, styles.inputSmall]}
@@ -690,5 +718,38 @@ const styles = StyleSheet.create({
     color: COLORS.grisSecundario,
     marginTop: 12,
     fontStyle: 'italic',
+  },
+  sugerenciasBox: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#dcdcdc',
+    marginTop: 2,
+    marginBottom: 4,
+    overflow: 'hidden',
+  },
+  sugerenciaItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  sugerenciaItemPressed: {
+    backgroundColor: '#f5faf5',
+  },
+  sugerenciaNombre: {
+    flex: 1,
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    color: COLORS.grisTexto,
+    marginRight: 8,
+  },
+  sugerenciaPrecio: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 13,
+    color: COLORS.verdePrincipal,
   },
 });
