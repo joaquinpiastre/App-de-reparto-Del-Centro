@@ -15,6 +15,8 @@ export async function getAuthToken(): Promise<string | null> {
   return AsyncStorage.getItem(TOKEN_KEY);
 }
 
+const TIMEOUT_MS = 15_000;
+
 export async function apiRequest<T>(
   path: string,
   init?: RequestInit & { omitAuth?: boolean }
@@ -31,7 +33,21 @@ export async function apiRequest<T>(
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_URL}${path}`, { ...init, headers });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { ...init, headers, signal: controller.signal });
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error('Sin respuesta del servidor (15s). Verificá tu conexión.');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
   const contentType = res.headers.get('content-type') ?? '';
   const json = contentType.includes('application/json') ? await res.json() : null;
 
