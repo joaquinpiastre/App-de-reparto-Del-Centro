@@ -1,3 +1,4 @@
+import 'express-async-errors';
 import cors from 'cors';
 import express from 'express';
 import { config } from './config.js';
@@ -35,8 +36,11 @@ app.use(pedidosCalleRouter);
 app.use(entregasRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(err);
-  res.status(500).json({ error: 'Error interno del servidor.' });
+  const message = err instanceof Error ? err.message : String(err);
+  console.error('[ERROR]', message, err instanceof Error ? err.stack : '');
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Error interno del servidor.', detalle: message });
+  }
 });
 
 const server = app.listen(config.port, () => {
