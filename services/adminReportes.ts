@@ -74,14 +74,13 @@ export interface PedidoJornadaHistorial {
 export interface EntregaJornadaHistorial {
   id: string;
   clienteId: string;
+  clienteNombre: string;
+  clienteDireccion: string;
+  clienteTipo?: string | null;
   estado: 'pendiente' | 'en_camino' | 'entregado' | 'problema';
   horaLlegada?: number | null;
-  horaEntrega?: number | null;
-  tiempoParadaSegundos?: number | null;
-  fotoUrl?: string | null;
-  firmaUrl?: string | null;
+  horaSalida?: number | null;
   notasRepartidor?: string | null;
-  timestampMs?: number | null;
 }
 
 function localStats(cierres: CierreJornadaResumen[]): AdminStatsResponse {

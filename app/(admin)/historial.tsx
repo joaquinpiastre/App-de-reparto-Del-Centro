@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FlatList, Image, StyleSheet, Text, View } from 'react-native';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
 
 import { MapaRecorridoHistorial } from '@/components/mapa/MapaRecorridoHistorial';
 import { Screen } from '@/components/ui/Screen';
@@ -16,20 +16,6 @@ import {
 import { obtenerPedidosCalleFinalizados } from '@/services/pedidosCalle';
 import type { PedidoCalle } from '@/types';
 import type { CierreJornadaResumen } from '@/store/useHistorialStore';
-
-function normalizeMediaUri(value?: string | null): string | null {
-  if (!value) return null;
-  const raw = String(value).trim();
-  if (!raw) return null;
-  if (raw.startsWith('data:image/') && raw.includes(';base64,')) {
-    const dupMarker = raw.indexOf('data:image/', 20);
-    return dupMarker > 0 ? raw.slice(dupMarker) : raw;
-  }
-  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('file://')) {
-    return raw;
-  }
-  return null;
-}
 
 export default function Historial() {
   const [cierres, setCierres] = useState<CierreJornadaResumen[]>([]);
@@ -51,9 +37,6 @@ export default function Historial() {
       setError(null);
       const data = await obtenerHistorialAdmin();
       setCierres(data);
-      if (data.length > 0 && !seleccionado) {
-        setSeleccionado(data[0]);
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo cargar el historial.');
     } finally {
@@ -203,34 +186,25 @@ export default function Historial() {
       )}
       {pedidosJornada.length > 0 ? (
         <View style={styles.card}>
-          <Text style={styles.title}>Pedidos del turno seleccionado</Text>
+          <Text style={styles.sectionTitle}>Pedidos en calle del turno</Text>
+          <Text style={styles.row}>{pedidosJornada.length} pedido(s) levantado(s) en la calle</Text>
           {pedidosJornada.map((p) => (
             <View key={p.id} style={styles.subCard}>
               <Text style={styles.title}>{p.titulo}</Text>
-              <Text style={styles.row}>ID pedido: {p.id}</Text>
               <Text style={styles.row}>
-                Estado: {p.estado} · Total: ${Number(p.total ?? 0).toFixed(2)}
+                {p.creadoEn ? new Date(Number(p.creadoEn)).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'}
+                {' · '}
+                <Text style={p.estado === 'retirado' ? styles.estadoOk : p.estado === 'cancelado' ? styles.estadoMal : styles.estadoNeutro}>
+                  {p.estado}
+                </Text>
+                {' · Total $'}{Number(p.total ?? 0).toFixed(2)}
               </Text>
-              <Text style={styles.row}>
-                Repartidor: {p.repartidorNombre || '-'} ({p.repartidorId || '-'})
-              </Text>
-              <Text style={styles.row}>
-                Creado: {p.creadoEn ? new Date(Number(p.creadoEn)).toLocaleString('es-AR') : '-'}
-              </Text>
-              <Text style={styles.row}>
-                Creado por: {p.creadoPorNombre || '-'} ({p.creadoPorId || '-'})
-              </Text>
-              <Text style={styles.row}>
-                Calles:{' '}
-                {Array.isArray(p.calles) ? p.calles.join(', ') : String(p.calles ?? '').trim() || '-'}
-              </Text>
-              <Text style={styles.row}>Notas: {p.notas?.trim() || 'Sin notas'}</Text>
-              <Text style={styles.row}>Items:</Text>
               {p.items?.map((it, idx) => (
                 <Text key={`${p.id}-${idx}`} style={styles.row}>
-                  · {Number(it.cantidad ?? 0)} x {it.descripcion} · Unit ${Number(it.precioUnitario ?? 0).toFixed(2)} · Subtotal ${Number(it.subtotal ?? 0).toFixed(2)}
+                  · {Number(it.cantidad ?? 0)} × {it.descripcion} — ${Number(it.subtotal ?? 0).toFixed(2)}
                 </Text>
               ))}
+              {p.notas?.trim() ? <Text style={styles.row}>Nota: {p.notas}</Text> : null}
             </View>
           ))}
         </View>
@@ -252,7 +226,7 @@ export default function Historial() {
               <Text style={styles.row}>
                 {new Date(p.creadoEn).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                 {' · '}
-                <Text style={p.estado === 'retirado' ? styles.estadoRetirado : styles.estadoCancelado}>
+                <Text style={p.estado === 'retirado' ? styles.estadoOk : styles.estadoMal}>
                   {p.estado === 'retirado' ? 'Retirado' : 'Cancelado'}
                 </Text>
                 {' · Total $'}{Number(p.total ?? 0).toFixed(2)}
@@ -270,44 +244,22 @@ export default function Historial() {
 
       {entregasJornada.length > 0 ? (
         <View style={styles.card}>
-          <Text style={styles.title}>Entregas completas del turno seleccionado</Text>
-          {entregasJornada.map((e) => (
-            <View key={e.id} style={styles.subCard}>
-              {(() => {
-                const fotoUri = normalizeMediaUri(e.fotoUrl);
-                const firmaUri = normalizeMediaUri(e.firmaUrl);
-                return (
-                  <>
+          <Text style={styles.sectionTitle}>Visitas del turno</Text>
+          <Text style={styles.row}>{entregasJornada.length} visita(s) registrada(s)</Text>
+          {entregasJornada.map((e, idx) => (
+            <View key={e.id} style={[styles.subCard, e.estado === 'problema' && styles.subCardProblema]}>
               <Text style={styles.title}>
-                Cliente {e.clienteId} · {e.estado}
+                {idx + 1}. {e.clienteNombre}
               </Text>
+              <Text style={styles.row}>{e.clienteDireccion}</Text>
               <Text style={styles.row}>
-                Hora:{' '}
-                {e.timestampMs ? new Date(Number(e.timestampMs)).toLocaleString('es-AR') : 'Sin horario'}
+                <Text style={e.estado === 'entregado' ? styles.estadoOk : e.estado === 'problema' ? styles.estadoMal : styles.estadoNeutro}>
+                  {e.estado === 'entregado' ? 'Entregado' : e.estado === 'problema' ? 'Con problema' : e.estado}
+                </Text>
+                {e.horaLlegada ? ` · Llegada: ${new Date(Number(e.horaLlegada)).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                {e.horaSalida ? ` · Salida: ${new Date(Number(e.horaSalida)).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}` : ''}
               </Text>
-              {typeof e.tiempoParadaSegundos === 'number' ? (
-                <Text style={styles.row}>Tiempo parada: {Math.max(0, Math.round(e.tiempoParadaSegundos / 60))} min</Text>
-              ) : null}
               {e.notasRepartidor ? <Text style={styles.row}>Nota: {e.notasRepartidor}</Text> : null}
-              {fotoUri ? (
-                <View style={styles.mediaBlock}>
-                  <Text style={styles.row}>Foto de entrega</Text>
-                  <Image source={{ uri: fotoUri }} style={styles.media} resizeMode="cover" />
-                </View>
-              ) : (
-                <Text style={styles.row}>Foto no disponible para esta entrega.</Text>
-              )}
-              {firmaUri ? (
-                <View style={styles.mediaBlock}>
-                  <Text style={styles.row}>Firma cliente</Text>
-                  <Image source={{ uri: firmaUri }} style={styles.media} resizeMode="contain" />
-                </View>
-              ) : (
-                <Text style={styles.row}>Firma no disponible para esta entrega.</Text>
-              )}
-                  </>
-                );
-              })()}
             </View>
           ))}
         </View>
@@ -322,8 +274,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 10 },
   subCard: { backgroundColor: '#f9f9f9', borderRadius: 12, padding: 10, marginTop: 8 },
   subCardCancelado: { backgroundColor: '#fff5f5' },
-  mediaBlock: { marginTop: 8 },
-  media: { width: '100%', height: 180, borderRadius: 10, backgroundColor: '#eef2f5' },
+  subCardProblema: { backgroundColor: '#fff8f0' },
   errorCard: { borderWidth: 1, borderColor: '#e06a6a', backgroundColor: '#fff3f3' },
   sectionTitle: { fontFamily: 'Poppins_700Bold', fontSize: 16, marginBottom: 6 },
   title: { fontFamily: 'Poppins_700Bold' },
@@ -337,6 +288,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   pcRepartidorTagText: { fontFamily: 'Poppins_600SemiBold', fontSize: 12, color: '#2e7d52' },
-  estadoRetirado: { fontFamily: 'Poppins_600SemiBold', color: '#2e7d52' },
-  estadoCancelado: { fontFamily: 'Poppins_600SemiBold', color: '#c0392b' },
+  estadoOk: { fontFamily: 'Poppins_600SemiBold', color: '#2e7d52' },
+  estadoMal: { fontFamily: 'Poppins_600SemiBold', color: '#c0392b' },
+  estadoNeutro: { fontFamily: 'Poppins_600SemiBold', color: '#b45309' },
 });

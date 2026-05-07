@@ -12,6 +12,7 @@ import { asignacionesRouter } from './routes/asignaciones.js';
 import { gpsRouter } from './routes/gps.js';
 import { healthRouter } from './routes/health.js';
 import { pedidosCalleRouter } from './routes/pedidosCalle.js';
+import { rutasFijasRouter } from './routes/rutasFijas.js';
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use(clientesRouter);
 app.use(asignacionesRouter);
 app.use(gpsRouter);
 app.use(pedidosCalleRouter);
+app.use(rutasFijasRouter);
 app.use(entregasRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

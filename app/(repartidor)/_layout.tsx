@@ -1,13 +1,42 @@
 import { Redirect, Tabs } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
+import { useEffect } from 'react';
 import { Platform, View } from 'react-native';
 
 import { TabBarAncha } from '@/components/navigation/TabBarAncha';
 import { COLORS } from '@/constants/colors';
+import { mandarPosicionGPS } from '@/services/gps';
 import { useAppStore } from '@/store/useAppStore';
 
 export default function RepartidorLayout() {
   const usuario = useAppStore((s) => s.usuario);
+  const jornadaActiva = useAppStore((s) => s.jornadaActiva);
+
+  useEffect(() => {
+    if (!jornadaActiva || Platform.OS === 'web') return;
+
+    let sub: Location.LocationSubscription | null = null;
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return;
+      sub = await Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.Balanced, timeInterval: 10000, distanceInterval: 10 },
+        (loc) => {
+          void mandarPosicionGPS(
+            loc.coords.latitude,
+            loc.coords.longitude,
+            loc.coords.speed ?? 0,
+            loc.coords.accuracy ?? 0,
+          );
+        }
+      );
+    })();
+
+    return () => {
+      sub?.remove();
+    };
+  }, [jornadaActiva]);
 
   if (!usuario || usuario.rol !== 'repartidor') {
     return <Redirect href="/(auth)/login" />;

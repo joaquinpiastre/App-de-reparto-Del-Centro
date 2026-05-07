@@ -7,17 +7,17 @@ import { API_URL } from '@/constants/api';
 
 const LOCATION_TASK = 'background-location-task';
 
-TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {
-  if (error || !data) return;
-  const { locations } = data as { locations: Location.LocationObject[] };
-  const location = locations[0];
-
+export async function mandarPosicionGPS(
+  lat: number,
+  lng: number,
+  velocidad: number,
+  precision: number
+): Promise<void> {
   const jornadaId = await AsyncStorage.getItem('jornada_id');
   const repartidorId = await AsyncStorage.getItem('repartidor_id');
   const repartidorNombre = await AsyncStorage.getItem('repartidor_nombre');
-  if (!jornadaId || !repartidorId) return;
+  if (!jornadaId || !repartidorId || !API_ENABLED) return;
 
-  if (!API_ENABLED) return;
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (MOBILE_API_KEY) {
     headers.Authorization = `Bearer ${MOBILE_API_KEY}`;
@@ -32,13 +32,25 @@ TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {
       jornadaId,
       repartidorId,
       nombre: repartidorNombre ?? repartidorId,
-      lat: location.coords.latitude,
-      lng: location.coords.longitude,
-      velocidad: location.coords.speed ?? 0,
-      precision: location.coords.accuracy ?? 0,
+      lat,
+      lng,
+      velocidad,
+      precision,
       timestamp: Date.now(),
     }),
   });
+}
+
+TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {
+  if (error || !data) return;
+  const { locations } = data as { locations: Location.LocationObject[] };
+  const location = locations[0];
+  await mandarPosicionGPS(
+    location.coords.latitude,
+    location.coords.longitude,
+    location.coords.speed ?? 0,
+    location.coords.accuracy ?? 0,
+  );
 });
 
 export async function iniciarGPS(jornadaId: string, repartidorId: string, repartidorNombre?: string) {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -22,6 +23,12 @@ import {
   obtenerClientesCatalogo,
 } from '@/services/asignaciones';
 import { obtenerRepartidoresDisponibles } from '@/services/adminPedidos';
+import {
+  obtenerRutaFija,
+  guardarRutaFija,
+  generarAsignacionesDesdeRutaFija,
+  type ClienteRutaFija,
+} from '@/services/rutasFijas';
 import type { Asignacion, ClienteCatalogo, Usuario } from '@/types';
 
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -42,11 +49,79 @@ export default function Asignaciones() {
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [guardando, setGuardando] = useState(false);
 
+  // Ruta fija
+  const [rutaFija, setRutaFija] = useState<ClienteRutaFija[]>([]);
+  const [modalRutaFijaVisible, setModalRutaFijaVisible] = useState(false);
+  const [seleccionadosRutaFija, setSeleccionadosRutaFija] = useState<Set<string>>(new Set());
+  const [busquedaRutaFija, setBusquedaRutaFija] = useState('');
+  const [guardandoRutaFija, setGuardandoRutaFija] = useState(false);
+  const [generando, setGenerando] = useState(false);
+
   // Conteo de visitas ya asignadas por cliente
   const visitasPorCliente = asignaciones.reduce<Record<string, number>>((acc, a) => {
     acc[a.clienteId] = (acc[a.clienteId] ?? 0) + 1;
     return acc;
   }, {});
+
+  const cargarRutaFija = useCallback(async () => {
+    if (!repSeleccionado) return;
+    try {
+      const ruta = await obtenerRutaFija(repSeleccionado.id);
+      setRutaFija(ruta);
+    } catch {
+      setRutaFija([]);
+    }
+  }, [repSeleccionado]);
+
+  const abrirModalRutaFija = async () => {
+    setBusquedaRutaFija('');
+    if (catalogo.length === 0) {
+      try {
+        const lista = await obtenerClientesCatalogo();
+        setCatalogo(lista);
+      } catch (e) {
+        console.warn('obtenerClientesCatalogo:', e);
+      }
+    }
+    setSeleccionadosRutaFija(new Set(rutaFija.map((c) => c.clienteId)));
+    setModalRutaFijaVisible(true);
+  };
+
+  const confirmarRutaFija = async () => {
+    if (!repSeleccionado) return;
+    setGuardandoRutaFija(true);
+    try {
+      await guardarRutaFija(repSeleccionado.id, [...seleccionadosRutaFija]);
+      setModalRutaFijaVisible(false);
+      await cargarRutaFija();
+    } catch (e) {
+      console.warn('guardarRutaFija:', e);
+    } finally {
+      setGuardandoRutaFija(false);
+    }
+  };
+
+  const aplicarRutaFija = async () => {
+    if (!repSeleccionado) return;
+    if (rutaFija.length === 0) {
+      Alert.alert('Ruta fija', 'Este repartidor no tiene ruta fija configurada. Editala primero.');
+      return;
+    }
+    setGenerando(true);
+    try {
+      const result = await generarAsignacionesDesdeRutaFija(repSeleccionado.id, fecha);
+      await cargarAsignaciones();
+      if (result.generados > 0) {
+        Alert.alert('Ruta aplicada', `Se generaron ${result.generados} asignación(es).${result.omitidos > 0 ? ` (${result.omitidos} ya existían)` : ''}`);
+      } else {
+        Alert.alert('Sin cambios', 'Todas las visitas de la ruta fija ya estaban asignadas para este día.');
+      }
+    } catch (e) {
+      console.warn('aplicarRutaFija:', e);
+    } finally {
+      setGenerando(false);
+    }
+  };
 
   const cargarRepartidores = useCallback(async () => {
     try {
@@ -82,7 +157,8 @@ export default function Asignaciones() {
 
   useEffect(() => {
     void cargarAsignaciones();
-  }, [cargarAsignaciones]);
+    void cargarRutaFija();
+  }, [cargarAsignaciones, cargarRutaFija]);
 
   // Polling cada 5s para ver entregas en tiempo real
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -180,6 +256,42 @@ export default function Asignaciones() {
         </ScrollView>
       </View>
 
+      {/* Card ruta fija */}
+      {repSeleccionado ? (
+        <View style={styles.rutaFijaCard}>
+          <View style={styles.rutaFijaRow}>
+            <MaterialIcons name="repeat" size={18} color={COLORS.verdeOscuro} />
+            <Text style={styles.rutaFijaTitle}>
+              Ruta fija: {rutaFija.length > 0 ? `${rutaFija.length} cliente(s)` : 'Sin configurar'}
+            </Text>
+          </View>
+          {rutaFija.length > 0 ? (
+            <Text style={styles.rutaFijaDetalle} numberOfLines={2}>
+              {rutaFija.map((c) => c.nombre).join(' · ')}
+            </Text>
+          ) : null}
+          <View style={styles.rutaFijaBotones}>
+            <View style={styles.rutaFijaBtn}>
+              <Button
+                label="Editar ruta fija"
+                variant="secondary"
+                onPress={() => void abrirModalRutaFija()}
+                iconLeft={<MaterialIcons name="edit" size={14} color={COLORS.verdeOscuro} />}
+              />
+            </View>
+            <View style={styles.rutaFijaBtn}>
+              <Button
+                label={generando ? 'Aplicando…' : 'Aplicar a este día'}
+                variant="primary"
+                loading={generando}
+                onPress={() => void aplicarRutaFija()}
+                iconLeft={<MaterialIcons name="play-arrow" size={14} color="#fff" />}
+              />
+            </View>
+          </View>
+        </View>
+      ) : null}
+
       {/* Lista de asignaciones del día */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
@@ -274,6 +386,95 @@ export default function Asignaciones() {
           iconLeft={<MaterialIcons name="add" size={18} color="#fff" />}
         />
       )}
+
+      {/* Modal editor de ruta fija */}
+      <Modal
+        visible={modalRutaFijaVisible}
+        animationType="slide"
+        onRequestClose={() => setModalRutaFijaVisible(false)}
+      >
+        <View style={styles.modal}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Ruta fija — {repSeleccionado?.nombre}</Text>
+            <Pressable onPress={() => setModalRutaFijaVisible(false)}>
+              <MaterialIcons name="close" size={24} color={COLORS.grisTexto} />
+            </Pressable>
+          </View>
+          <Text style={styles.rutaFijaModalSub}>
+            Seleccioná los clientes que este repartidor visita siempre. Se guardan de forma permanente.
+          </Text>
+
+          <View style={styles.searchWrap}>
+            <MaterialIcons name="search" size={20} color={COLORS.grisSecundario} style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Buscar por nombre, dirección o tipo..."
+              placeholderTextColor={COLORS.grisSecundario}
+              value={busquedaRutaFija}
+              onChangeText={setBusquedaRutaFija}
+              autoFocus
+            />
+          </View>
+
+          {seleccionadosRutaFija.size > 0 && (
+            <Text style={styles.selCount}>{seleccionadosRutaFija.size} en la ruta fija</Text>
+          )}
+
+          <FlatList
+            data={catalogo.filter((c) => {
+              const q = busquedaRutaFija.toLowerCase();
+              return (
+                c.nombre.toLowerCase().includes(q) ||
+                c.direccion.toLowerCase().includes(q) ||
+                c.tipo.toLowerCase().includes(q)
+              );
+            })}
+            keyExtractor={(item) => item.id}
+            style={styles.modalList}
+            renderItem={({ item }) => {
+              const estaSeleccionado = seleccionadosRutaFija.has(item.id);
+              return (
+                <Pressable
+                  style={[styles.catalogoCard, estaSeleccionado && styles.catalogoCardSel]}
+                  onPress={() => {
+                    setSeleccionadosRutaFija((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(item.id)) next.delete(item.id);
+                      else next.add(item.id);
+                      return next;
+                    });
+                  }}
+                >
+                  <View style={styles.catalogoInfo}>
+                    <View style={styles.asigRow}>
+                      <Text style={styles.catalogoNombre}>{item.nombre}</Text>
+                      <View style={[styles.tipoBadge, item.tipo === 'taller' ? styles.badgeTaller : styles.badgeCliente]}>
+                        <Text style={styles.tipoText}>{item.tipo}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.catalogoDir}>{item.direccion}</Text>
+                  </View>
+                  <MaterialIcons
+                    name={estaSeleccionado ? 'check-circle' : 'radio-button-unchecked'}
+                    size={24}
+                    color={estaSeleccionado ? COLORS.verdeOscuro : '#ccc'}
+                  />
+                </Pressable>
+              );
+            }}
+            ListEmptyComponent={<Text style={styles.empty}>No se encontraron clientes.</Text>}
+          />
+
+          <View style={styles.modalFooter}>
+            <Button
+              label={guardandoRutaFija ? 'Guardando...' : `Guardar ruta fija (${seleccionadosRutaFija.size})`}
+              onPress={() => void confirmarRutaFija()}
+              loading={guardandoRutaFija}
+              variant="primary"
+            />
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal selector de clientes del catálogo */}
       <Modal
@@ -527,4 +728,27 @@ const styles = StyleSheet.create({
   yaAsignadoText: { fontFamily: 'Poppins_600SemiBold', fontSize: 11, color: COLORS.grisSecundario },
   textDim: { color: COLORS.grisSecundario },
   modalFooter: { padding: 16, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e8ecef' },
+
+  // Ruta fija
+  rutaFijaCard: {
+    backgroundColor: '#f0fae8',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#b7e0a0',
+    gap: 6,
+  },
+  rutaFijaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  rutaFijaTitle: { fontFamily: 'Poppins_700Bold', fontSize: 14, color: COLORS.verdeOscuro },
+  rutaFijaDetalle: { fontFamily: 'Poppins_400Regular', fontSize: 12, color: COLORS.grisSecundario },
+  rutaFijaBotones: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  rutaFijaBtn: { flex: 1 },
+  rutaFijaModalSub: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    color: COLORS.grisSecundario,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    lineHeight: 20,
+  },
 });

@@ -1,6 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useRef } from 'react';
-import { Alert, FlatList, Linking, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Linking, StyleSheet, Text, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { RutaTrazada } from '@/components/mapa/RutaTrazada';
@@ -57,33 +56,7 @@ export default function RutaDelDia() {
     clienteActualIndex,
     jornadaActiva,
     ultimaPosicion,
-    cerrarJornada,
   } = useAppStore();
-  const cierreNotificadoRef = useRef(false);
-
-  useEffect(() => {
-    if (!jornadaActiva || clientesDelDia.length === 0) {
-      cierreNotificadoRef.current = false;
-      return;
-    }
-    const pendientes = clientesDelDia.filter(
-      (c) => c.estado === 'pendiente' || c.estado === 'en_camino'
-    ).length;
-    if (pendientes > 0 || cierreNotificadoRef.current) return;
-    cierreNotificadoRef.current = true;
-    Alert.alert(
-      'Recorrido finalizado',
-      'Visitaste todos los clientes del día. Se cerrará la jornada.',
-      [
-        {
-          text: 'Cerrar jornada',
-          onPress: () => {
-            void cerrarJornada().then(() => router.replace('/(repartidor)/resumen'));
-          },
-        },
-      ]
-    );
-  }, [jornadaActiva, clientesDelDia, cerrarJornada]);
 
   if (!jornadaActiva || clientesDelDia.length === 0) {
     return (

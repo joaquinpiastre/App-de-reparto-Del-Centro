@@ -5,6 +5,7 @@ import { optimizarRuta } from '@/hooks/useRuta';
 import { actualizarEstadoAsignacion, obtenerAsignaciones } from '@/services/asignaciones';
 import { registrarCierreJornadaApi } from '@/services/entregasApi';
 import { detenerGPS, iniciarGPS } from '@/services/gps';
+import { generarAsignacionesDesdeRutaFija } from '@/services/rutasFijas';
 import type { Asignacion, Cliente, Coordenadas, EstadoEntrega, Usuario } from '@/types';
 
 import { useHistorialStore } from './useHistorialStore';
@@ -105,6 +106,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return;
     }
     const jornadaId = `jor-${Date.now()}`;
+    // Auto-generar la ruta fija del día antes de cargar las asignaciones.
+    // Si no hay ruta fija configurada o ya fue generada, esto es un no-op.
+    const fechaHoy = new Date().toISOString().slice(0, 10);
+    await generarAsignacionesDesdeRutaFija(usuario.id, fechaHoy).catch(() => {});
     let clientes: Cliente[] = [];
     try {
       const clientesAsignados = await cargarClientesDesdeAsignaciones(usuario);

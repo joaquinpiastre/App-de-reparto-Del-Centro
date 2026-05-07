@@ -9,7 +9,7 @@ export interface AuthClaims {
 }
 
 export function signToken(claims: AuthClaims): string {
-  return jwt.sign(claims, config.jwtSecret, { expiresIn: '5h' });
+  return jwt.sign(claims, config.jwtSecret, { expiresIn: '6h' });
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {

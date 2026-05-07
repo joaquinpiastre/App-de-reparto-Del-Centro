@@ -183,19 +183,33 @@ entregasRouter.get('/admin-reportes/historial/:jornadaId/pedidos', requireAuth, 
     res.status(400).json({ error: 'Jornada inválida.' });
     return;
   }
-  await pool.query(`alter table pedidos_admin add column if not exists jornada_id text`);
+
+  await ensureCierresTable();
+  const cierreRes = await pool.query<{ repartidor_id: string; created_at: Date }>(
+    `select repartidor_id, created_at from cierres_jornada where jornada_id = $1 limit 1`,
+    [jornadaId]
+  );
+  if ((cierreRes.rowCount ?? 0) === 0) {
+    res.json({ pedidos: [] });
+    return;
+  }
+
+  const { repartidor_id: repartidorId, created_at: createdAt } = cierreRes.rows[0];
+  const fecha = new Date(createdAt);
+  const inicioDia = new Date(fecha);
+  inicioDia.setHours(0, 0, 0, 0);
+  const finDia = new Date(fecha);
+  finDia.setHours(23, 59, 59, 999);
+
   const { rows } = await pool.query(
     `select p.id,
-            p.titulo,
-            p.calles,
+            p.calle_mostrada as titulo,
             p.repartidor_id as "repartidorId",
             p.repartidor_nombre as "repartidorNombre",
             p.total,
             p.notas,
             p.estado,
             p.creado_en_ms as "creadoEn",
-            p.creado_por_id as "creadoPorId",
-            p.creado_por_nombre as "creadoPorNombre",
             coalesce(
               json_agg(
                 json_build_object(
@@ -207,14 +221,19 @@ entregasRouter.get('/admin-reportes/historial/:jornadaId/pedidos', requireAuth, 
               ) filter (where i.id is not null),
               '[]'::json
             ) as items
-     from pedidos_admin p
-     left join pedidos_admin_items i on i.pedido_id = p.id
-     where p.jornada_id = $1
+     from pedidos_calle p
+     left join pedido_calle_items i on i.pedido_id = p.id
+     where p.repartidor_id = $1
+       and p.creado_en_ms >= $2
+       and p.creado_en_ms <= $3
      group by p.id
      order by p.creado_en_ms asc`,
-    [jornadaId]
+    [repartidorId, inicioDia.getTime(), finDia.getTime()]
   );
-  res.json({ pedidos: rows });
+
+  res.json({
+    pedidos: rows.map((r) => ({ ...r, total: Number(r.total ?? 0) })),
+  });
 });
 
 entregasRouter.get('/admin-reportes/historial/:jornadaId/entregas', requireAuth, async (req, res) => {
@@ -226,19 +245,19 @@ entregasRouter.get('/admin-reportes/historial/:jornadaId/entregas', requireAuth,
   }
   const { rows } = await pool.query(
     `select
-       e.id,
-       e.cliente_id as "clienteId",
-       e.estado,
-       e.hora_llegada_ms as "horaLlegada",
-       e.hora_entrega_ms as "horaEntrega",
-       e.tiempo_parada_segundos as "tiempoParadaSegundos",
-       e.foto_url as "fotoUrl",
-       e.firma_url as "firmaUrl",
-       e.notas_repartidor as "notasRepartidor",
-       coalesce(e.hora_entrega_ms, e.hora_llegada_ms, extract(epoch from e.created_at) * 1000) as "timestampMs"
-     from entregas e
-     where e.jornada_id = $1
-     order by "timestampMs" asc, e.created_at asc`,
+       a.id,
+       a.cliente_id as "clienteId",
+       c.nombre as "clienteNombre",
+       c.direccion as "clienteDireccion",
+       c.tipo as "clienteTipo",
+       a.estado,
+       a.hora_llegada_ms as "horaLlegada",
+       a.hora_salida_ms as "horaSalida",
+       a.notas_repartidor as "notasRepartidor"
+     from asignaciones a
+     join clientes c on c.id = a.cliente_id
+     where a.jornada_id = $1
+     order by a.hora_llegada_ms asc nulls last, a.creado_en asc`,
     [jornadaId]
   );
   res.json({ entregas: rows });
