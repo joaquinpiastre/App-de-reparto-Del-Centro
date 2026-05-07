@@ -5,7 +5,6 @@ import { optimizarRuta } from '@/hooks/useRuta';
 import { actualizarEstadoAsignacion, obtenerAsignaciones } from '@/services/asignaciones';
 import { registrarCierreJornadaApi } from '@/services/entregasApi';
 import { detenerGPS, iniciarGPS } from '@/services/gps';
-import { generarAsignacionesDesdeRutaFija } from '@/services/rutasFijas';
 import type { Asignacion, Cliente, Coordenadas, EstadoEntrega, Usuario } from '@/types';
 
 import { useHistorialStore } from './useHistorialStore';
@@ -106,10 +105,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return;
     }
     const jornadaId = `jor-${Date.now()}`;
-    // Auto-generar la ruta fija del día antes de cargar las asignaciones.
-    // Si no hay ruta fija configurada o ya fue generada, esto es un no-op.
-    const fechaHoy = new Date().toISOString().slice(0, 10);
-    await generarAsignacionesDesdeRutaFija(usuario.id, fechaHoy).catch(() => {});
     let clientes: Cliente[] = [];
     try {
       const clientesAsignados = await cargarClientesDesdeAsignaciones(usuario);
@@ -117,12 +112,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
         clientes = optimizarRuta(clientesAsignados);
       }
     } catch (err) {
-      console.warn('cargarClientesDesdeAsignaciones:', err);
+      Alert.alert(
+        'Error de conexión',
+        'No se pudo conectar al servidor. Verificá tu conexión e intentá de nuevo.'
+      );
+      return;
     }
     if (clientes.length === 0) {
       Alert.alert(
         'Sin clientes asignados',
-        'El administrador todavía no te asignó clientes para hoy.'
+        'El administrador no aplicó tu ruta para hoy. Pedile que lo haga desde la pantalla de Asignaciones.'
       );
       return;
     }

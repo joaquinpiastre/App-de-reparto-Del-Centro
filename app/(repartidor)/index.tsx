@@ -8,6 +8,7 @@ import { Screen } from '@/components/ui/Screen';
 import { Button } from '@/components/ui/Button';
 import { COLORS } from '@/constants/colors';
 import { setAuthToken } from '@/services/apiClient';
+import { obtenerAsignaciones } from '@/services/asignaciones';
 import { useAppStore } from '@/store/useAppStore';
 
 const TEL_LOCAL = '2604500000';
@@ -18,18 +19,30 @@ export default function HomeRepartidor() {
     jornadaInicioEpoch,
     iniciarJornada,
     pausarJornada,
+    cerrarJornada,
     resetSesion,
     usuario,
     clientesDelDia,
     irAlPrimerPendiente,
   } = useAppStore();
   const [tick, setTick] = useState(0);
+  const [pendientesHoy, setPendientesHoy] = useState<number | null>(null);
 
   useEffect(() => {
     if (!jornadaActiva || !jornadaInicioEpoch) return;
     const id = setInterval(() => setTick((t) => t + 1), 30000);
     return () => clearInterval(id);
   }, [jornadaActiva, jornadaInicioEpoch]);
+
+  useEffect(() => {
+    if (jornadaActiva || !usuario?.id) return;
+    obtenerAsignaciones({ repartidorId: usuario.id })
+      .then((asigs) => {
+        const n = asigs.filter((a) => a.estado === 'pendiente' || a.estado === 'en_camino').length;
+        setPendientesHoy(n);
+      })
+      .catch(() => setPendientesHoy(null));
+  }, [jornadaActiva, usuario?.id]);
 
   const minutosRuta = useMemo(() => {
     if (!jornadaActiva || !jornadaInicioEpoch) return 0;
@@ -45,6 +58,21 @@ export default function HomeRepartidor() {
     await setAuthToken(null);
     resetSesion();
     router.replace('/(auth)/login');
+  };
+
+  const terminarTurno = () => {
+    if (!jornadaActiva) {
+      Alert.alert('Sin turno activo', 'Iniciá un turno primero para poder terminarlo.');
+      return;
+    }
+    Alert.alert(
+      'Terminar turno',
+      '¿Guardar y finalizar la jornada? Se guardará todo en el historial.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Terminar', onPress: () => void cerrarJornada() },
+      ]
+    );
   };
 
   const irProximaEntrega = () => {
@@ -86,9 +114,11 @@ export default function HomeRepartidor() {
           </View>
         ) : (
           <Text style={styles.statusHint}>
-            {total > 0
-              ? `Tenés ${total} clientes asignados. Iniciá el turno para comenzar.`
-              : 'Iniciá el turno para cargar la ruta del día.'}
+            {pendientesHoy != null && pendientesHoy > 0
+              ? `Tenés ${pendientesHoy} cliente(s) asignados para hoy. Iniciá el turno para comenzar.`
+              : pendientesHoy === 0
+                ? 'No tenés clientes asignados hoy. Pedile al admin que aplique tu ruta.'
+                : 'Iniciá el turno para cargar la ruta del día.'}
           </Text>
         )}
       </View>
@@ -147,8 +177,19 @@ export default function HomeRepartidor() {
         </Pressable>
       </View>
 
-      {/* Cerrar sesión al final, menos prominente */}
-      <Button label="Cerrar sesión" onPress={cerrarSesion} variant="danger" />
+      {/* Terminar turno y cerrar sesión */}
+      <View style={styles.rowBottom}>
+        <View style={styles.rowBottomBtn}>
+          <Button
+            label="TERMINAR TURNO"
+            variant="warning"
+            onPress={terminarTurno}
+          />
+        </View>
+        <View style={styles.rowBottomBtn}>
+          <Button label="CERRAR SESIÓN" onPress={cerrarSesion} variant="danger" />
+        </View>
+      </View>
     </Screen>
   );
 }
@@ -254,5 +295,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.grisSecundario,
     lineHeight: 15,
+  },
+  rowBottom: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  rowBottomBtn: {
+    flex: 1,
   },
 });

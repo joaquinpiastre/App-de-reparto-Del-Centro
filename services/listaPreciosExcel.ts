@@ -2,65 +2,10 @@ import * as XLSX from 'xlsx';
 
 import type { ProductoLista } from '@/types';
 
-function normHeader(k: string): string {
-  return String(k)
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .replace(/\s+/g, '_');
-}
-
-function pickCodigo(row: Record<string, unknown>, keys: string[]): string {
-  for (const k of keys) {
-    const nk = normHeader(k);
-    if (nk.includes('codigo') || nk === 'code' || nk === 'sku' || nk === 'id') {
-      const v = row[k];
-      if (v !== undefined && v !== '') return String(v).trim();
-    }
-  }
-  const first = keys[0];
-  return first ? String(row[first] ?? '').trim() : '';
-}
-
-function pickDescripcion(row: Record<string, unknown>, keys: string[]): string {
-  for (const k of keys) {
-    const nk = normHeader(k);
-    if (
-      nk.includes('descripcion') ||
-      nk.includes('producto') ||
-      nk === 'desc' ||
-      nk.includes('nombre')
-    ) {
-      const v = row[k];
-      if (v !== undefined && v !== '') return String(v).trim();
-    }
-  }
-  for (const k of keys) {
-    const nk = normHeader(k);
-    if (!nk.includes('precio') && !nk.includes('precio_unit')) {
-      const v = row[k];
-      if (typeof v === 'string' && v.trim()) return v.trim();
-    }
-  }
-  return '';
-}
-
-function pickPrecio(row: Record<string, unknown>, keys: string[]): number {
-  for (const k of keys) {
-    const nk = normHeader(k);
-    if (nk.includes('precio') || nk.includes('importe') || nk === 'pvp' || nk === 'unit') {
-      const v = row[k];
-      const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
-      if (!Number.isNaN(n)) return n;
-    }
-  }
-  return 0;
-}
-
 /**
  * Lee el primer libro de un .xlsx/.xls desde una URI local (DocumentPicker / FileSystem).
- * Columnas típicas: código | descripción/producto | precio (nombres flexibles).
+ * Columnas fijas: A = código, B = descripción, D = precio unitario.
+ * Las filas donde la columna D no es un número válido se ignoran (ej. encabezados).
  */
 export async function parseListaPreciosDesdeUri(uri: string): Promise<ProductoLista[]> {
   const response = await fetch(uri);
@@ -72,18 +17,33 @@ export async function parseListaPreciosDesdeUri(uri: string): Promise<ProductoLi
   const name = wb.SheetNames[0];
   if (!name) return [];
   const sheet = wb.Sheets[name];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+
+  // header: 1 → cada fila es un array; las columnas quedan en índice 0-based:
+  // índice 0 = col A, 1 = col B, 2 = col C, 3 = col D
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' });
+
   const out: ProductoLista[] = [];
   for (const row of rows) {
-    const keys = Object.keys(row);
-    if (keys.length === 0) continue;
-    const descripcion = pickDescripcion(row, keys);
-    const precioUnitario = pickPrecio(row, keys);
-    if (!descripcion && precioUnitario <= 0) continue;
-    const codigo = pickCodigo(row, keys) || `row-${out.length + 1}`;
+    if (!Array.isArray(row)) continue;
+
+    const colA = String(row[0] ?? '').trim();   // código
+    const colB = String(row[1] ?? '').trim();   // descripción
+    const rawD = row[3];                        // precio (col D)
+
+    const precioUnitario =
+      typeof rawD === 'number'
+        ? rawD
+        : parseFloat(String(rawD ?? '').replace(',', '.'));
+
+    // Fila inválida: precio no es número (encabezado u otra fila de texto)
+    if (!Number.isFinite(precioUnitario) || precioUnitario < 0) continue;
+
+    const descripcion = colB || colA;
+    if (!descripcion) continue;
+
     out.push({
-      codigo,
-      descripcion: descripcion || codigo,
+      codigo: colA || `row-${out.length + 1}`,
+      descripcion,
       precioUnitario,
     });
   }

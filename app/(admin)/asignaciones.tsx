@@ -117,7 +117,8 @@ export default function Asignaciones() {
         Alert.alert('Sin cambios', 'Todas las visitas de la ruta fija ya estaban asignadas para este día.');
       }
     } catch (e) {
-      console.warn('aplicarRutaFija:', e);
+      const msg = e instanceof Error ? e.message : 'No se pudo aplicar la ruta.';
+      Alert.alert('Error al aplicar', msg);
     } finally {
       setGenerando(false);
     }
