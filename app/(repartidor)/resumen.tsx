@@ -70,7 +70,7 @@ export default function Resumen() {
   };
 
   return (
-    <Screen title="Tu progreso" subtitle="Resumen del día">
+    <Screen title="Tu progreso" subtitle="Resumen del día" showBack>
       <View style={styles.card}>
         <Text style={styles.titulo}>{stats.titulo}</Text>
         {stats.lineas.map((m) => (

@@ -42,6 +42,14 @@ export async function obtenerPedidosCalleFinalizados(): Promise<PedidoCalle[]> {
   return data.pedidos.filter((p) => p.estado === 'retirado' || p.estado === 'cancelado');
 }
 
+export async function cerrarTurnoPedidosCalle(jornadaId: string, repartidorId: string): Promise<void> {
+  if (!API_ENABLED) return;
+  await apiRequest('/pedidos-calle/cerrar-turno', {
+    method: 'POST',
+    body: JSON.stringify({ jornadaId, repartidorId }),
+  });
+}
+
 export function suscribirPedidosCalle(onChange: (list: PedidoCalle[]) => void): () => void {
   if (API_ENABLED) {
     const load = async () => {

@@ -402,7 +402,7 @@ export default function PedidosCalleAdmin() {
               </Text>
               {(p.items ?? []).map((it, idx) => (
                 <Text key={`${p.id}-it-${idx}`} style={styles.itemLine}>
-                  {it.cantidad} × {it.descripcion} (${Number(it.subtotal).toFixed(2)})
+                  {it.codigo ? `[${it.codigo}] ` : ''}{it.cantidad} × {it.descripcion} (${Number(it.subtotal).toFixed(2)})
                 </Text>
               ))}
               {p.notas ? <Text style={styles.notas}>Nota repartidor: {p.notas}</Text> : null}

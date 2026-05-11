@@ -29,9 +29,21 @@ const estadoSchema = z.object({
   estado: z.enum(['pendiente', 'visto', 'armado', 'retirado', 'cancelado']),
 });
 
+const cerrarTurnoSchema = z.object({
+  jornadaId: z.string().min(3),
+  repartidorId: z.string().min(3),
+});
+
 export const pedidosCalleRouter = Router();
 
+async function ensureJornadaIdColumn(): Promise<void> {
+  await pool.query(
+    `alter table pedidos_calle add column if not exists jornada_id text`
+  );
+}
+
 pedidosCalleRouter.get('/pedidos-calle', requireAuth, async (_req, res) => {
+  await ensureJornadaIdColumn();
   const { rows } = await pool.query(
     `select p.*,
       coalesce(
@@ -48,6 +60,7 @@ pedidosCalleRouter.get('/pedidos-calle', requireAuth, async (_req, res) => {
       ) as items
      from pedidos_calle p
      left join pedido_calle_items i on i.pedido_id = p.id
+     where p.jornada_id is null
      group by p.id
      order by p.creado_en_ms desc`
   );
@@ -55,6 +68,7 @@ pedidosCalleRouter.get('/pedidos-calle', requireAuth, async (_req, res) => {
 });
 
 pedidosCalleRouter.post('/pedidos-calle', requireAuth, async (req, res) => {
+  await ensureJornadaIdColumn();
   const parsed = pedidoSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Payload inválido.' });
@@ -105,6 +119,26 @@ pedidosCalleRouter.post('/pedidos-calle', requireAuth, async (req, res) => {
     await pool.query('rollback');
     throw e;
   }
+});
+
+// Asocia todos los pedidos abiertos del repartidor a la jornada al cerrar el turno.
+// A partir de ahí dejan de aparecer en la sección activa y quedan en el historial.
+pedidosCalleRouter.post('/pedidos-calle/cerrar-turno', requireAuth, async (req, res) => {
+  await ensureJornadaIdColumn();
+  const parsed = cerrarTurnoSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Payload inválido.' });
+    return;
+  }
+  const { jornadaId, repartidorId } = parsed.data;
+  await pool.query(
+    `update pedidos_calle
+     set jornada_id = $1
+     where repartidor_id = $2
+       and jornada_id is null`,
+    [jornadaId, repartidorId]
+  );
+  res.json({ ok: true });
 });
 
 pedidosCalleRouter.patch('/pedidos-calle/:id/estado', requireAuth, async (req, res) => {

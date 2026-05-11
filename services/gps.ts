@@ -6,6 +6,7 @@ import { API_ENABLED, MOBILE_API_KEY } from '@/constants/api';
 import { API_URL } from '@/constants/api';
 
 const LOCATION_TASK = 'background-location-task';
+const GPS_ACTIVO_KEY = 'gps_activo';
 
 export async function mandarPosicionGPS(
   lat: number,
@@ -66,21 +67,54 @@ export async function iniciarGPS(jornadaId: string, repartidorId: string, repart
     throw new Error('Permiso de GPS denegado');
   }
 
+  // Detener si ya estaba corriendo para evitar duplicados
+  const yaActivo = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);
+  if (yaActivo) await Location.stopLocationUpdatesAsync(LOCATION_TASK);
+
   await Location.startLocationUpdatesAsync(LOCATION_TASK, {
-    accuracy: Location.Accuracy.Balanced,
-    // Mayor frecuencia para seguimiento en tiempo real desde admin.
-    distanceInterval: 10,
+    accuracy: Location.Accuracy.High,
+    distanceInterval: 5,
     timeInterval: 5000,
     showsBackgroundLocationIndicator: true,
+    // iOS: evitar que el sistema pause las actualizaciones por baja actividad
+    pausesUpdatesAutomatically: false,
+    activityType: Location.ActivityType.AutomotiveNavigation,
     foregroundService: {
       notificationTitle: 'Del Centro - GPS Activo',
       notificationBody: 'Seguimiento de ruta en curso',
       notificationColor: '#6DC921',
     },
   });
+
+  await AsyncStorage.setItem(GPS_ACTIVO_KEY, '1');
 }
 
 export async function detenerGPS() {
+  await AsyncStorage.removeItem(GPS_ACTIVO_KEY);
   const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);
   if (started) await Location.stopLocationUpdatesAsync(LOCATION_TASK);
+}
+
+/**
+ * Llamar cada vez que la app vuelve al frente.
+ * Si el GPS debería estar activo (jornada en curso) pero se detuvo
+ * (SO agresivo, proceso matado), lo reinicia automáticamente.
+ */
+export async function reanudarGPSSiNecesario(): Promise<void> {
+  try {
+    const debeEstarActivo = await AsyncStorage.getItem(GPS_ACTIVO_KEY);
+    if (!debeEstarActivo) return;
+
+    const jornadaId = await AsyncStorage.getItem('jornada_id');
+    const repartidorId = await AsyncStorage.getItem('repartidor_id');
+    if (!jornadaId || !repartidorId) return;
+
+    const yaActivo = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);
+    if (yaActivo) return;
+
+    const repartidorNombre = await AsyncStorage.getItem('repartidor_nombre') ?? repartidorId;
+    await iniciarGPS(jornadaId, repartidorId, repartidorNombre);
+  } catch (e) {
+    console.warn('reanudarGPSSiNecesario:', e);
+  }
 }

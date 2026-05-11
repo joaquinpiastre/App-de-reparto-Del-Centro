@@ -167,10 +167,32 @@ export default function HomeRepartidor() {
 
         <Pressable
           style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
-          onPress={() => Linking.openURL(`tel:${TEL_LOCAL}`)}
+          onPress={() => router.push('/(repartidor)/clientes')}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: '#fff0f0' }]}>
+            <MaterialIcons name="groups" size={26} color="#e53935" />
+          </View>
+          <Text style={styles.actionLabel}>Clientes</Text>
+          <Text style={styles.actionSub}>Ver y editar clientes</Text>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
+          onPress={() => router.push('/(repartidor)/resumen')}
         >
           <View style={[styles.actionIcon, { backgroundColor: '#f0eeff' }]}>
-            <MaterialIcons name="call" size={26} color="#7c4dff" />
+            <MaterialIcons name="insights" size={26} color="#7c4dff" />
+          </View>
+          <Text style={styles.actionLabel}>Resumen</Text>
+          <Text style={styles.actionSub}>Ver tu progreso del día</Text>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
+          onPress={() => Linking.openURL(`tel:${TEL_LOCAL}`)}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: '#e8f4fd' }]}>
+            <MaterialIcons name="call" size={26} color={COLORS.acentoAzul} />
           </View>
           <Text style={styles.actionLabel}>Llamar al local</Text>
           <Text style={styles.actionSub}>{TEL_LOCAL}</Text>

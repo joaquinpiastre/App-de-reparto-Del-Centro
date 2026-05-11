@@ -18,11 +18,12 @@ type Props = {
   subtitle: string;
   /** Si es false, no se muestra eliminar (p. ej. repartidor). */
   puedeEliminar: boolean;
+  showBack?: boolean;
 };
 
 type FiltroLista = 'todos' | 'cliente' | 'taller';
 
-export function ClientesCatalogo({ title, subtitle, puedeEliminar }: Props) {
+export function ClientesCatalogo({ title, subtitle, puedeEliminar, showBack }: Props) {
   const [q, setQ] = useState('');
   const [filtroLista, setFiltroLista] = useState<FiltroLista>('todos');
   const [clientes, setClientes] = useState<ClienteAdminCatalogo[]>([]);
@@ -148,7 +149,7 @@ export function ClientesCatalogo({ title, subtitle, puedeEliminar }: Props) {
         : 'Nuevo cliente';
 
   return (
-    <Screen title={title} subtitle={subtitle}>
+    <Screen title={title} subtitle={subtitle} showBack={showBack}>
       {error ? (
         <View style={[styles.feedback, styles.feedbackError]}>
           <Text style={styles.feedbackText}>{error}</Text>

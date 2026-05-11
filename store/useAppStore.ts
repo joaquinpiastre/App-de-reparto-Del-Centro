@@ -5,6 +5,7 @@ import { optimizarRuta } from '@/hooks/useRuta';
 import { actualizarEstadoAsignacion, obtenerAsignaciones } from '@/services/asignaciones';
 import { registrarCierreJornadaApi } from '@/services/entregasApi';
 import { detenerGPS, iniciarGPS } from '@/services/gps';
+import { cerrarTurnoPedidosCalle } from '@/services/pedidosCalle';
 import type { Asignacion, Cliente, Coordenadas, EstadoEntrega, Usuario } from '@/types';
 
 import { useHistorialStore } from './useHistorialStore';
@@ -173,6 +174,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
           const msg = err instanceof Error ? err.message : 'No se pudo enviar el cierre al backend.';
           Alert.alert('Cierre no sincronizado', msg);
         });
+        // Mover los pedidos en la calle al historial de esta jornada
+        void cerrarTurnoPedidosCalle(jornadaId, usuario.id).catch(() => {});
       }
     }
     set({

@@ -47,6 +47,7 @@ export default function PedidoCalleScreen() {
   const [descManual, setDescManual] = useState('');
   const [precioManual, setPrecioManual] = useState('');
   const [cantidadManual, setCantidadManual] = useState('1');
+  const [codigoSeleccionado, setCodigoSeleccionado] = useState<string | undefined>();
   const [catalogo, setCatalogo] = useState<ProductoLista[]>([]);
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
 
@@ -91,6 +92,7 @@ export default function PedidoCalleScreen() {
   const seleccionarProducto = (p: ProductoLista) => {
     setDescManual(p.descripcion);
     setPrecioManual(String(p.precioUnitario));
+    setCodigoSeleccionado(p.codigo);
     setMostrarSugerencias(false);
   };
 
@@ -110,6 +112,7 @@ export default function PedidoCalleScreen() {
     setLineas((prev) => [
       ...prev,
       {
+        codigo: codigoSeleccionado,
         descripcion,
         cantidad,
         precioUnitario: precio,
@@ -119,6 +122,7 @@ export default function PedidoCalleScreen() {
     setDescManual('');
     setPrecioManual('');
     setCantidadManual('1');
+    setCodigoSeleccionado(undefined);
   };
 
   const quitarLinea = (index: number) => {
@@ -180,6 +184,7 @@ export default function PedidoCalleScreen() {
     <Screen
       title="Pedido en la calle"
       subtitle="Buscá productos del catálogo o cargá manualmente"
+      showBack
     >
       <FormBody {...formScrollProps}>
         <Text style={styles.help}>
@@ -217,6 +222,7 @@ export default function PedidoCalleScreen() {
             value={descManual}
             onChangeText={(t) => {
               setDescManual(t);
+              setCodigoSeleccionado(undefined);
               setMostrarSugerencias(true);
             }}
           />

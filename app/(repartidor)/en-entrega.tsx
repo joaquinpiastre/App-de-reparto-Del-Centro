@@ -80,6 +80,7 @@ export default function EnEntrega() {
     <Screen
       title="Visita activa"
       subtitle={`${esTaller ? 'Taller' : 'Cliente'}: ${cliente.nombre}`}
+      showBack
     >
       {/* Datos del cliente */}
       <View style={styles.card}>

@@ -185,21 +185,14 @@ entregasRouter.get('/admin-reportes/historial/:jornadaId/pedidos', requireAuth, 
   }
 
   await ensureCierresTable();
-  const cierreRes = await pool.query<{ repartidor_id: string; created_at: Date }>(
-    `select repartidor_id, created_at from cierres_jornada where jornada_id = $1 limit 1`,
+  const cierreRes = await pool.query<{ jornada_id: string }>(
+    `select jornada_id from cierres_jornada where jornada_id = $1 limit 1`,
     [jornadaId]
   );
   if ((cierreRes.rowCount ?? 0) === 0) {
     res.json({ pedidos: [] });
     return;
   }
-
-  const { repartidor_id: repartidorId, created_at: createdAt } = cierreRes.rows[0];
-  const fecha = new Date(createdAt);
-  const inicioDia = new Date(fecha);
-  inicioDia.setHours(0, 0, 0, 0);
-  const finDia = new Date(fecha);
-  finDia.setHours(23, 59, 59, 999);
 
   const { rows } = await pool.query(
     `select p.id,
@@ -223,12 +216,10 @@ entregasRouter.get('/admin-reportes/historial/:jornadaId/pedidos', requireAuth, 
             ) as items
      from pedidos_calle p
      left join pedido_calle_items i on i.pedido_id = p.id
-     where p.repartidor_id = $1
-       and p.creado_en_ms >= $2
-       and p.creado_en_ms <= $3
+     where p.jornada_id = $1
      group by p.id
      order by p.creado_en_ms asc`,
-    [repartidorId, inicioDia.getTime(), finDia.getTime()]
+    [jornadaId]
   );
 
   res.json({

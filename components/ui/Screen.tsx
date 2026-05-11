@@ -1,22 +1,24 @@
 import { Children, isValidElement, type PropsWithChildren } from 'react';
-import { Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
 
 import { COLORS } from '@/constants/colors';
 
 interface Props extends PropsWithChildren {
   title: string;
   subtitle?: string;
+  showBack?: boolean;
 }
 
-export function Screen({ title, subtitle, children }: Props) {
+export function Screen({ title, subtitle, showBack, children }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
   const isCompact = width < 420;
   const bodyHorizontal = isCompact ? 12 : 16;
   const maxBodyWidth = width >= 1360 ? 1180 : width >= 1024 ? 1040 : 960;
-  /** Espacio bajo la barra de estado / notch; en web solo padding visual. */
   const headerPaddingTop = isWeb ? 18 : insets.top + 12;
   const headerPaddingBottom = isCompact ? 14 : 18;
 
@@ -44,6 +46,17 @@ export function Screen({ title, subtitle, children }: Props) {
           },
         ]}
       >
+        {showBack ? (
+          <Pressable
+            onPress={() => router.back()}
+            style={styles.backBtn}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Volver"
+          >
+            <MaterialIcons name="arrow-back" size={24} color="#fff" />
+          </Pressable>
+        ) : null}
         <Text style={[styles.title, { fontSize: isCompact ? 20 : 24 }]}>{title}</Text>
         {subtitle ? <Text style={[styles.subtitle, { fontSize: isCompact ? 12 : 13 }]}>{subtitle}</Text> : null}
       </View>
@@ -73,6 +86,11 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.grisClaro },
   safeWeb: { flex: 1, minHeight: 0, width: '100%', alignSelf: 'stretch' },
   header: { backgroundColor: COLORS.verdePrincipal },
+  backBtn: {
+    marginBottom: 6,
+    alignSelf: 'flex-start',
+    padding: 2,
+  },
   title: { color: '#fff', fontFamily: 'Poppins_800ExtraBold' },
   subtitle: { color: '#edf6e6', fontFamily: 'Poppins_400Regular', marginTop: 2 },
   body: { flex: 1, minHeight: 0 },

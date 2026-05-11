@@ -53,7 +53,7 @@
           "locationAlwaysAndWhenInUsePermission": "La app necesita tu ubicación para rastrear repartos.",
           "locationWhenInUsePermission": "La app necesita tu ubicación para mostrarte la ruta.",
           "isAndroidBackgroundLocationEnabled": true,
-          "isIosBackgroundLocationEnabled": false
+          "isIosBackgroundLocationEnabled": true
         }
       ],
       [

@@ -11,12 +11,13 @@ import { Stack as ExpoStack, withLayoutContext } from 'expo-router';
 import { createStackNavigator } from '@react-navigation/stack';
 import { stackRouterOverride } from '@/lib/stackRouterOverride';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, StyleSheet } from 'react-native';
+import { AppState, Platform, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { inicializarNotificaciones } from '@/services/notificaciones';
 import { restaurarSesionApi } from '@/services/authApi';
+import { reanudarGPSSiNecesario } from '@/services/gps';
 import { useAppStore } from '@/store/useAppStore';
 
 /**
@@ -38,6 +39,17 @@ export default function RootLayout() {
   useEffect(() => {
     if (Platform.OS === 'web') return;
     void inicializarNotificaciones();
+  }, []);
+
+  // Reiniciar GPS si estaba activo y el SO lo mató (pantalla bloqueada, memoria, etc.)
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') void reanudarGPSSiNecesario();
+    });
+    // Verificar también al arrancar la app
+    void reanudarGPSSiNecesario();
+    return () => sub.remove();
   }, []);
 
   useEffect(() => {
@@ -96,7 +108,7 @@ export default function RootLayout() {
         <StatusBar style="light" />
         <RootNav
         detachInactiveScreens={false}
-        initialRouteName="(auth)/login"
+        initialRouteName="index"
         screenOptions={
           Platform.OS === 'web'
             ? {
