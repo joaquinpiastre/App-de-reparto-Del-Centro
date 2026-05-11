@@ -19,7 +19,7 @@ import { actualizarEstadoPedidoCalle, suscribirPedidosCalle } from '@/services/p
 import { useAppStore } from '@/store/useAppStore';
 import { useAdminPedidosStore } from '@/store/useAdminPedidosStore';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
-import type { PedidoAdmin, PedidoAdminItem, PedidoCalle, ProductoLista, Usuario } from '@/types';
+import type { EstadoPedidoCalle, PedidoAdmin, PedidoAdminItem, PedidoCalle, ProductoLista, Usuario } from '@/types';
 
 function fmtFecha(ts: number) {
   try {
