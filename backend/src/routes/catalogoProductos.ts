@@ -71,11 +71,16 @@ catalogoProductosRouter.get('/catalogo-productos', requireAuth, async (_req, res
     ),
   ]);
   const meta = metaRes.rows[0] as { nombre_archivo?: string; updated_at?: string } | undefined;
+  const productos = (prodRes.rows as { codigo: string; descripcion: string; precioUnitario: unknown }[]).map((p) => ({
+    codigo: p.codigo,
+    descripcion: p.descripcion,
+    precioUnitario: Number(p.precioUnitario),
+  }));
   res.json({
     catalogo: {
       nombreArchivo: meta?.nombre_archivo ?? null,
       updatedAt: meta?.updated_at ?? null,
-      productos: prodRes.rows,
+      productos,
     },
   });
 });

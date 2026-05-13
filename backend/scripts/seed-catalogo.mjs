@@ -5,10 +5,8 @@
  * Uso (desde el directorio backend/):
  *   node --env-file=.env ./scripts/seed-catalogo.mjs
  *
- * Columnas del Excel:
- *   A (índice 0) → código
- *   B (índice 1) → descripción / artículo
- *   D (índice 3) → precio final (con IVA)
+ * Detecta columnas por encabezado. Para el Excel de Del Centro:
+ *   A = Código, B = Artículo (descripción), C = P. Venta sin IVA, D = Precio Final
  */
 
 import { createRequire } from 'module';
@@ -25,36 +23,68 @@ const XLSX = require(resolve(__dirname, '../../node_modules/xlsx/xlsx.js'));
 
 const { Client } = pg;
 
+function normHeader(s) {
+  return String(s).trim().toLowerCase().normalize('NFD').replace(/\p{M}/gu, '').replace(/[^a-z0-9]/g, '');
+}
+
+function detectarColumnas(headerRow) {
+  let idxCodigo = 0, idxDesc = 1, idxPrecio = 3;
+  const precioKeys = ['preciofinal', 'preciociva', 'precioiva', 'precio', 'importe', 'pvp', 'total'];
+  const descNorms = ['articulo', 'art', 'descripcion', 'producto', 'nombre', 'detalle', 'desc'];
+
+  for (let i = 0; i < headerRow.length; i++) {
+    const norm = normHeader(String(headerRow[i] ?? ''));
+    if (precioKeys.some(k => norm === k || norm.startsWith(k))) {
+      if (idxPrecio === 3 || norm.includes('final') || norm.includes('iva')) idxPrecio = i;
+    }
+  }
+  for (let i = 0; i < headerRow.length; i++) {
+    const norm = normHeader(String(headerRow[i] ?? ''));
+    if (norm === 'codigo' || norm.startsWith('cod')) { idxCodigo = i; break; }
+  }
+  for (let i = 0; i < headerRow.length; i++) {
+    if (i === idxCodigo || i === idxPrecio) continue;
+    const norm = normHeader(String(headerRow[i] ?? ''));
+    if (descNorms.some(k => norm === k || norm.startsWith(k))) { idxDesc = i; break; }
+  }
+  return { idxCodigo, idxDesc, idxPrecio };
+}
+
 async function parseCatalog(xlsxPath) {
   const buf = await readFile(xlsxPath);
-  const wb = XLSX.read(buf, { type: 'buffer' });
+  const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
   const sheetName = wb.SheetNames[0];
   if (!sheetName) return [];
   const sheet = wb.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  if (rows.length === 0) return [];
+
+  const headerRow = Array.isArray(rows[0]) ? rows[0] : [];
+  const { idxCodigo, idxDesc, idxPrecio } = detectarColumnas(headerRow);
+  console.log(`  Columnas detectadas: código=[${headerRow[idxCodigo]}] desc=[${headerRow[idxDesc]}] precio=[${headerRow[idxPrecio]}]`);
 
   const out = [];
   for (const row of rows) {
     if (!Array.isArray(row)) continue;
 
-    const colA = String(row[0] ?? '').trim();   // código
-    const colB = String(row[1] ?? '').trim();   // descripción
-    const rawD = row[3];                        // precio final (col D)
+    const colCodigo = String(row[idxCodigo] ?? '').trim();
+    const colDesc   = String(row[idxDesc]   ?? '').trim();
+    const rawPrecio = row[idxPrecio];
 
     const precio =
-      typeof rawD === 'number'
-        ? rawD
-        : parseFloat(String(rawD ?? '').replace(',', '.'));
+      typeof rawPrecio === 'number'
+        ? rawPrecio
+        : parseFloat(String(rawPrecio ?? '').replace(',', '.'));
 
     if (!Number.isFinite(precio) || precio <= 0) continue;
 
-    const descripcion = colB || colA;
+    const descripcion = colDesc || colCodigo;
     if (!descripcion) continue;
 
     out.push({
-      codigo: colA || `row-${out.length + 1}`,
+      codigo: colCodigo || `row-${out.length + 1}`,
       descripcion,
-      precioUnitario: precio,
+      precioUnitario: Math.round(precio * 100) / 100,
     });
   }
   return out;
