@@ -76,13 +76,14 @@ export async function iniciarGPS(jornadaId: string, repartidorId: string, repart
     distanceInterval: 5,
     timeInterval: 5000,
     showsBackgroundLocationIndicator: true,
-    // iOS: evitar que el sistema pause las actualizaciones por baja actividad
     pausesUpdatesAutomatically: false,
     activityType: Location.ActivityType.AutomotiveNavigation,
     foregroundService: {
       notificationTitle: 'Del Centro - GPS Activo',
       notificationBody: 'Seguimiento de ruta en curso',
       notificationColor: '#6DC921',
+      // Mantener el servicio vivo aunque el usuario cierre la app desde recientes
+      killServiceOnDestroy: false,
     },
   });
 
