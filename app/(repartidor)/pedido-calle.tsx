@@ -16,6 +16,7 @@ import { COLORS } from '@/constants/colors';
 import { direccionesMismaCalle, normalizarCalle } from '@/lib/direccion';
 import { obtenerCatalogoProductos } from '@/services/catalogoProductos';
 import { actualizarEstadoPedidoCalle, publicarPedidoCalle, suscribirPedidosCalle } from '@/services/pedidosCalle';
+import { listarClientesAdmin, type ClienteAdminCatalogo } from '@/services/adminClientes';
 import { useAppStore } from '@/store/useAppStore';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
 import type { LineaPedidoCalle, ProductoLista } from '@/types';
@@ -51,6 +52,11 @@ export default function PedidoCalleScreen() {
   const [catalogo, setCatalogo] = useState<ProductoLista[]>([]);
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
 
+  const [clientes, setClientes] = useState<ClienteAdminCatalogo[]>([]);
+  const [clienteSeleccionado, setClienteSeleccionado] = useState<ClienteAdminCatalogo | null>(null);
+  const [busquedaCliente, setBusquedaCliente] = useState('');
+  const [mostrarSugerenciasCliente, setMostrarSugerenciasCliente] = useState(false);
+
   const misPedidos = useMemo(() => {
     if (!usuario?.id) return [];
     return pedidosCalle
@@ -69,6 +75,10 @@ export default function PedidoCalleScreen() {
     });
   }, []);
 
+  useEffect(() => {
+    void listarClientesAdmin().then(setClientes).catch(() => {});
+  }, []);
+
   const sugerencias = useMemo(() => {
     const q = descManual.trim().toLowerCase();
     if (q.length < 2) return [];
@@ -76,6 +86,28 @@ export default function PedidoCalleScreen() {
       .filter((p) => p.descripcion.toLowerCase().includes(q))
       .slice(0, 8);
   }, [catalogo, descManual]);
+
+  const sugerenciasCliente = useMemo(() => {
+    const q = busquedaCliente.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return clientes
+      .filter((c) => c.nombre.toLowerCase().includes(q) || c.direccion.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [clientes, busquedaCliente]);
+
+  const seleccionarCliente = (c: ClienteAdminCatalogo) => {
+    setClienteSeleccionado(c);
+    setBusquedaCliente('');
+    setMostrarSugerenciasCliente(false);
+    if (!calleRef.trim()) {
+      setCalleRef(c.direccion);
+    }
+  };
+
+  const limpiarCliente = () => {
+    setClienteSeleccionado(null);
+    setBusquedaCliente('');
+  };
 
   const clientesMismaCalle = useMemo(() => {
     if (!calleRef.trim()) return [];
@@ -155,9 +187,12 @@ export default function PedidoCalleScreen() {
         notas: notas.trim() || undefined,
         clientesMismaCalle,
         estado: 'pendiente',
+        clienteId: clienteSeleccionado?.id,
+        clienteNombre: clienteSeleccionado?.nombre,
       });
       setLineas([]);
       setNotas('');
+      setClienteSeleccionado(null);
       Alert.alert(
         'Pedido enviado',
         'El equipo en el local recibió el pedido (notificación en la app admin si está abierta).'
@@ -190,6 +225,57 @@ export default function PedidoCalleScreen() {
         <Text style={styles.help}>
           Buscá el producto por nombre y el precio se completa solo desde el catálogo. Si no lo encontrás, escribilo manualmente.
         </Text>
+
+        <Text style={styles.label}>Cliente / Taller</Text>
+        <Text style={styles.hint}>Seleccioná a quién le levantás el pedido</Text>
+        {clienteSeleccionado ? (
+          <View style={styles.clienteChip}>
+            <View style={styles.clienteChipInfo}>
+              <Text style={styles.clienteChipNombre}>{clienteSeleccionado.nombre}</Text>
+              <Text style={styles.clienteChipDireccion}>{clienteSeleccionado.direccion}</Text>
+              <View style={styles.clienteTipoBadge}>
+                <Text style={styles.clienteTipoBadgeText}>
+                  {clienteSeleccionado.tipo === 'taller' ? 'Taller' : 'Cliente'}
+                </Text>
+              </View>
+            </View>
+            <Pressable onPress={limpiarCliente} style={styles.clienteChipClear} hitSlop={12}>
+              <Text style={styles.clienteChipClearText}>Cambiar</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            <TextInput
+              style={styles.input}
+              placeholder="Buscá por nombre o dirección…"
+              placeholderTextColor={COLORS.grisSecundario}
+              value={busquedaCliente}
+              onChangeText={(t) => {
+                setBusquedaCliente(t);
+                setMostrarSugerenciasCliente(true);
+              }}
+            />
+            {mostrarSugerenciasCliente && sugerenciasCliente.length > 0 && (
+              <View style={styles.sugerenciasBox}>
+                {sugerenciasCliente.map((c) => (
+                  <Pressable
+                    key={c.id}
+                    style={({ pressed }) => [styles.sugerenciaItem, pressed && styles.sugerenciaPressed]}
+                    onPress={() => seleccionarCliente(c)}
+                  >
+                    <View style={styles.clienteSugerenciaInfo}>
+                      <Text style={styles.sugerenciaNombre} numberOfLines={1}>{c.nombre}</Text>
+                      <Text style={styles.clienteSugerenciaDireccion} numberOfLines={1}>{c.direccion}</Text>
+                    </View>
+                    <Text style={styles.clienteSugerenciaTipo}>
+                      {c.tipo === 'taller' ? 'Taller' : 'Cliente'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </>
+        )}
 
         <Text style={styles.label}>Calle de referencia</Text>
         <Text style={styles.hint}>Para agrupar con tu ruta actual</Text>
@@ -314,6 +400,11 @@ export default function PedidoCalleScreen() {
         ) : (
           misPedidos.map((p) => (
             <View key={p.id} style={styles.pedidoCard}>
+              {p.clienteNombre ? (
+                <View style={styles.pedidoClienteTag}>
+                  <Text style={styles.pedidoClienteTagText}>{p.clienteNombre}</Text>
+                </View>
+              ) : null}
               <Text style={styles.pedidoTit}>
                 {p.calleMostrada} · ${fmtMoney(p.total)}
               </Text>
@@ -462,6 +553,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#dde3e8',
   },
+  pedidoClienteTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#e8f5e9',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 6,
+  },
+  pedidoClienteTagText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 13,
+    color: COLORS.verdeOscuro,
+  },
   pedidoTit: { fontFamily: 'Poppins_700Bold', color: COLORS.verdeOscuro, fontSize: 17 },
   pedidoEstado: { fontFamily: 'Poppins_500Medium', color: COLORS.grisTexto, fontSize: 15, marginTop: 6 },
   pedidoItems: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#eee' },
@@ -506,5 +610,56 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_700Bold',
     fontSize: 15,
     color: COLORS.verdeOscuro,
+  },
+  clienteChip: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    backgroundColor: '#f0f9f2',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.verdePrincipal,
+    padding: 14,
+    gap: 12,
+  },
+  clienteChipInfo: { flex: 1, gap: 4 },
+  clienteChipNombre: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 16,
+    color: COLORS.verdeOscuro,
+  },
+  clienteChipDireccion: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 14,
+    color: COLORS.grisTexto,
+  },
+  clienteTipoBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#d4edda',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  clienteTipoBadgeText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 12,
+    color: COLORS.verdeOscuro,
+  },
+  clienteChipClear: { paddingVertical: 4 },
+  clienteChipClearText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 14,
+    color: COLORS.verdePrincipal,
+  },
+  clienteSugerenciaInfo: { flex: 1, gap: 2 },
+  clienteSugerenciaDireccion: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    color: COLORS.grisSecundario,
+  },
+  clienteSugerenciaTipo: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 12,
+    color: COLORS.verdePrincipal,
   },
 });

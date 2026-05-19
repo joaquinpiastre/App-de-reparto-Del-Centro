@@ -93,6 +93,8 @@ export interface PedidoCalle {
   clientesMismaCalle: { nombre: string; direccion: string }[];
   estado: EstadoPedidoCalle;
   creadoEn: number;
+  clienteId?: string;
+  clienteNombre?: string;
 }
 
 export interface Entrega {

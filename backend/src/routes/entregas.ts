@@ -203,6 +203,8 @@ entregasRouter.get('/admin-reportes/historial/:jornadaId/pedidos', requireAuth, 
             p.notas,
             p.estado,
             p.creado_en_ms as "creadoEn",
+            p.cliente_id as "clienteId",
+            p.cliente_nombre as "clienteNombre",
             coalesce(
               json_agg(
                 json_build_object(

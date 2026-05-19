@@ -23,6 +23,8 @@ const pedidoSchema = z.object({
   clientesMismaCalle: z.array(z.object({ nombre: z.string(), direccion: z.string() })).default([]),
   estado: z.enum(['pendiente', 'visto', 'armado', 'retirado', 'cancelado']).default('pendiente'),
   creadoEn: z.number().int().positive(),
+  clienteId: z.string().optional(),
+  clienteNombre: z.string().optional(),
 });
 
 const estadoSchema = z.object({
@@ -36,28 +38,40 @@ const cerrarTurnoSchema = z.object({
 
 export const pedidosCalleRouter = Router();
 
-async function ensureJornadaIdColumn(): Promise<void> {
-  await pool.query(
-    `alter table pedidos_calle add column if not exists jornada_id text`
-  );
+async function ensureColumns(): Promise<void> {
+  await pool.query(`alter table pedidos_calle add column if not exists jornada_id text`);
+  await pool.query(`alter table pedidos_calle add column if not exists cliente_id text`);
+  await pool.query(`alter table pedidos_calle add column if not exists cliente_nombre text`);
 }
 
 pedidosCalleRouter.get('/pedidos-calle', requireAuth, async (_req, res) => {
-  await ensureJornadaIdColumn();
+  await ensureColumns();
   const { rows } = await pool.query(
-    `select p.*,
-      coalesce(
-        json_agg(
-          json_build_object(
-            'codigo', i.codigo,
-            'descripcion', i.descripcion,
-            'cantidad', i.cantidad,
-            'precioUnitario', i.precio_unitario,
-            'subtotal', i.subtotal
-          )
-        ) filter (where i.id is not null),
-        '[]'::json
-      ) as items
+    `select
+       p.id,
+       p.calle_normalizada as "calleNormalizada",
+       p.calle_mostrada as "calleMostrada",
+       p.repartidor_id as "repartidorId",
+       p.repartidor_nombre as "repartidorNombre",
+       p.total,
+       p.notas,
+       p.clientes_misma_calle as "clientesMismaCalle",
+       p.estado,
+       p.creado_en_ms as "creadoEn",
+       p.cliente_id as "clienteId",
+       p.cliente_nombre as "clienteNombre",
+       coalesce(
+         json_agg(
+           json_build_object(
+             'codigo', i.codigo,
+             'descripcion', i.descripcion,
+             'cantidad', i.cantidad,
+             'precioUnitario', i.precio_unitario,
+             'subtotal', i.subtotal
+           )
+         ) filter (where i.id is not null),
+         '[]'::json
+       ) as items
      from pedidos_calle p
      left join pedido_calle_items i on i.pedido_id = p.id
      where p.jornada_id is null
@@ -68,7 +82,7 @@ pedidosCalleRouter.get('/pedidos-calle', requireAuth, async (_req, res) => {
 });
 
 pedidosCalleRouter.post('/pedidos-calle', requireAuth, async (req, res) => {
-  await ensureJornadaIdColumn();
+  await ensureColumns();
   const parsed = pedidoSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Payload inválido.' });
@@ -79,8 +93,8 @@ pedidosCalleRouter.post('/pedidos-calle', requireAuth, async (req, res) => {
   try {
     await pool.query(
       `insert into pedidos_calle
-      (id, calle_normalizada, calle_mostrada, repartidor_id, repartidor_nombre, total, notas, clientes_misma_calle, estado, creado_en_ms)
-      values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10)
+      (id, calle_normalizada, calle_mostrada, repartidor_id, repartidor_nombre, total, notas, clientes_misma_calle, estado, creado_en_ms, cliente_id, cliente_nombre)
+      values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12)
       on conflict (id) do update set
         calle_normalizada = excluded.calle_normalizada,
         calle_mostrada = excluded.calle_mostrada,
@@ -89,7 +103,9 @@ pedidosCalleRouter.post('/pedidos-calle', requireAuth, async (req, res) => {
         total = excluded.total,
         notas = excluded.notas,
         clientes_misma_calle = excluded.clientes_misma_calle,
-        estado = excluded.estado`,
+        estado = excluded.estado,
+        cliente_id = excluded.cliente_id,
+        cliente_nombre = excluded.cliente_nombre`,
       [
         p.id,
         p.calleNormalizada,
@@ -101,6 +117,8 @@ pedidosCalleRouter.post('/pedidos-calle', requireAuth, async (req, res) => {
         JSON.stringify(p.clientesMismaCalle),
         p.estado,
         p.creadoEn,
+        p.clienteId ?? null,
+        p.clienteNombre ?? null,
       ]
     );
 
@@ -124,7 +142,7 @@ pedidosCalleRouter.post('/pedidos-calle', requireAuth, async (req, res) => {
 // Asocia todos los pedidos abiertos del repartidor a la jornada al cerrar el turno.
 // A partir de ahí dejan de aparecer en la sección activa y quedan en el historial.
 pedidosCalleRouter.post('/pedidos-calle/cerrar-turno', requireAuth, async (req, res) => {
-  await ensureJornadaIdColumn();
+  await ensureColumns();
   const parsed = cerrarTurnoSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Payload inválido.' });

@@ -69,6 +69,8 @@ export interface PedidoJornadaHistorial {
   creadoPorId?: string;
   creadoPorNombre?: string;
   items: PedidoJornadaHistorialItem[];
+  clienteId?: string;
+  clienteNombre?: string;
 }
 
 export interface EntregaJornadaHistorial {

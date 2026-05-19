@@ -190,6 +190,11 @@ export default function Historial() {
           <Text style={styles.row}>{pedidosJornada.length} pedido(s) levantado(s) en la calle</Text>
           {pedidosJornada.map((p) => (
             <View key={p.id} style={styles.subCard}>
+              {p.clienteNombre ? (
+                <View style={styles.pcClienteTag}>
+                  <Text style={styles.pcClienteTagText}>{p.clienteNombre}</Text>
+                </View>
+              ) : null}
               <Text style={styles.title}>{p.titulo}</Text>
               <Text style={styles.row}>
                 {p.creadoEn ? new Date(Number(p.creadoEn)).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'}
@@ -288,6 +293,15 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   pcRepartidorTagText: { fontFamily: 'Poppins_600SemiBold', fontSize: 12, color: '#2e7d52' },
+  pcClienteTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#e3f2fd',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 4,
+  },
+  pcClienteTagText: { fontFamily: 'Poppins_600SemiBold', fontSize: 12, color: '#1565c0' },
   estadoOk: { fontFamily: 'Poppins_600SemiBold', color: '#2e7d52' },
   estadoMal: { fontFamily: 'Poppins_600SemiBold', color: '#c0392b' },
   estadoNeutro: { fontFamily: 'Poppins_600SemiBold', color: '#b45309' },

@@ -394,6 +394,11 @@ export default function PedidosCalleAdmin() {
               <View style={styles.repartidorTag}>
                 <Text style={styles.repartidorTagText}>{p.repartidorNombre}</Text>
               </View>
+              {p.clienteNombre ? (
+                <View style={styles.clienteTag}>
+                  <Text style={styles.clienteTagText}>{p.clienteNombre}</Text>
+                </View>
+              ) : null}
               <Text style={styles.title}>{p.calleMostrada}</Text>
               <Text style={styles.row}>
                 <Text style={styles.estadoBadge}>Estado: {p.estado}</Text>
@@ -649,6 +654,19 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_600SemiBold',
     fontSize: 12,
     color: COLORS.verdeOscuro,
+  },
+  clienteTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#e3f2fd',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 4,
+  },
+  clienteTagText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 12,
+    color: '#1565c0',
   },
   fechaCalle: {
     fontFamily: 'Poppins_500Medium',

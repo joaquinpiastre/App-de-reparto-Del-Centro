@@ -1,12 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as IntentLauncher from 'expo-intent-launcher';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import { Alert, Platform } from 'react-native';
 
 import { API_ENABLED, MOBILE_API_KEY } from '@/constants/api';
 import { API_URL } from '@/constants/api';
 
 const LOCATION_TASK = 'background-location-task';
 const GPS_ACTIVO_KEY = 'gps_activo';
+const BATERIA_SOLICITADA_KEY = 'bateria_exencion_solicitada';
 
 export async function mandarPosicionGPS(
   lat: number,
@@ -54,6 +57,50 @@ TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {
   );
 });
 
+/**
+ * Solicita al usuario que exima la app de la optimización de batería de Android.
+ * Solo muestra el diálogo una vez. Sin esta exención, el GPS se pausa cuando
+ * la pantalla se apaga en la mayoría de los dispositivos Android.
+ */
+async function solicitarExencionBateria(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    const yaFue = await AsyncStorage.getItem(BATERIA_SOLICITADA_KEY);
+    if (yaFue) return;
+    await AsyncStorage.setItem(BATERIA_SOLICITADA_KEY, '1');
+
+    await new Promise<void>((resolve) => {
+      Alert.alert(
+        'GPS con pantalla apagada',
+        'Para que la ubicación siga enviándose aunque la pantalla esté apagada, necesitás permitir que la app ignore la optimización de batería.\n\nEn la siguiente pantalla seleccioná "Permitir".',
+        [
+          {
+            text: 'Ahora no',
+            style: 'cancel',
+            onPress: () => resolve(),
+          },
+          {
+            text: 'Configurar',
+            onPress: async () => {
+              try {
+                await IntentLauncher.startActivityAsync(
+                  'android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
+                  { data: 'package:com.delcentro.reparto' }
+                );
+              } catch {
+                // Si el intent falla (algunos fabricantes lo bloquean), ignorar silenciosamente.
+              }
+              resolve();
+            },
+          },
+        ]
+      );
+    });
+  } catch {
+    // No interrumpir el inicio del GPS si esto falla.
+  }
+}
+
 export async function iniciarGPS(jornadaId: string, repartidorId: string, repartidorNombre?: string) {
   await AsyncStorage.setItem('jornada_id', jornadaId);
   await AsyncStorage.setItem('repartidor_id', repartidorId);
@@ -73,21 +120,29 @@ export async function iniciarGPS(jornadaId: string, repartidorId: string, repart
 
   await Location.startLocationUpdatesAsync(LOCATION_TASK, {
     accuracy: Location.Accuracy.High,
-    distanceInterval: 5,
+    // timeInterval es el mínimo entre actualizaciones (ms)
     timeInterval: 5000,
+    // distanceInterval: sin distancia mínima → siempre actualiza cada timeInterval
+    distanceInterval: 0,
+    // Evita que Android agrupe y postergue las actualizaciones (crucial para pantalla apagada)
+    deferredUpdatesInterval: 0,
+    deferredUpdatesDistance: 0,
     showsBackgroundLocationIndicator: true,
     pausesUpdatesAutomatically: false,
     activityType: Location.ActivityType.AutomotiveNavigation,
     foregroundService: {
-      notificationTitle: 'Del Centro - GPS Activo',
-      notificationBody: 'Seguimiento de ruta en curso',
+      notificationTitle: 'Del Centro — GPS Activo',
+      notificationBody: 'Rastreando tu ruta de reparto',
       notificationColor: '#6DC921',
-      // Mantener el servicio vivo aunque el usuario cierre la app desde recientes
+      // El servicio no muere aunque el usuario cierre la app desde recientes
       killServiceOnDestroy: false,
     },
   });
 
   await AsyncStorage.setItem(GPS_ACTIVO_KEY, '1');
+
+  // Solicitar exención de batería (solo la primera vez, después de iniciar el GPS)
+  void solicitarExencionBateria();
 }
 
 export async function detenerGPS() {
