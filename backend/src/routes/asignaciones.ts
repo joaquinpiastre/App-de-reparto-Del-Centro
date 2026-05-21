@@ -151,6 +151,37 @@ asignacionesRouter.delete('/asignaciones/:id', requireAuth, async (req, res) => 
   res.json({ ok: true });
 });
 
+// PATCH /asignaciones/reordenar — admin: actualiza el campo `orden` de múltiples asignaciones
+const reordenarSchema = z.object({
+  ordenes: z
+    .array(z.object({ id: z.string().min(1), orden: z.number().int().min(0) }))
+    .min(1),
+});
+
+asignacionesRouter.patch('/asignaciones/reordenar', requireAuth, async (req, res) => {
+  const user = (req as unknown as ReqWithUser).user!;
+  if (user.rol !== 'admin') {
+    res.status(403).json({ error: 'Solo admin puede reordenar asignaciones.' });
+    return;
+  }
+  const parsed = reordenarSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Payload inválido.' });
+    return;
+  }
+  await pool.query('BEGIN');
+  try {
+    for (const { id, orden } of parsed.data.ordenes) {
+      await pool.query('UPDATE asignaciones SET orden = $1 WHERE id = $2', [orden, id]);
+    }
+    await pool.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) {
+    await pool.query('ROLLBACK');
+    throw e;
+  }
+});
+
 // PATCH /asignaciones/:id/estado — repartidor: actualiza estado de la visita
 asignacionesRouter.patch('/asignaciones/:id/estado', requireAuth, async (req, res) => {
   await ensureTable();

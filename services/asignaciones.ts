@@ -58,6 +58,16 @@ export async function actualizarEstadoAsignacion(
   });
 }
 
+export async function reordenarAsignaciones(
+  ordenes: { id: string; orden: number }[]
+): Promise<void> {
+  if (!API_ENABLED) return;
+  await apiRequest('/asignaciones/reordenar', {
+    method: 'PATCH',
+    body: JSON.stringify({ ordenes }),
+  });
+}
+
 export async function obtenerClientesCatalogo(): Promise<ClienteCatalogo[]> {
   if (!API_ENABLED) return [];
   const data = await apiRequest<ClientesResponse>('/clientes');

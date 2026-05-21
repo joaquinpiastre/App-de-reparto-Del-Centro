@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 
 import { Screen } from '@/components/ui/Screen';
 import { Button } from '@/components/ui/Button';
@@ -21,6 +22,7 @@ import {
   eliminarAsignacion,
   obtenerAsignaciones,
   obtenerClientesCatalogo,
+  reordenarAsignaciones,
 } from '@/services/asignaciones';
 import { obtenerRepartidoresDisponibles } from '@/services/adminPedidos';
 import {
@@ -37,6 +39,46 @@ const formatFecha = (iso: string) => {
   return `${d}/${m}/${y}`;
 };
 
+// ─── DragHandle ────────────────────────────────────────────────────────────────
+interface DragHandleProps {
+  itemId: string;
+  fromIndex: number;
+  onStart: (id: string, fromIndex: number) => void;
+  onMove: (absY: number) => void;
+  onEnd: () => void;
+  onCancel: () => void;
+}
+
+function DragHandle({ itemId, fromIndex, onStart, onMove, onEnd, onCancel }: DragHandleProps) {
+  const gesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .minDistance(6)
+        .onStart(() => {
+          onStart(itemId, fromIndex);
+        })
+        .onUpdate((e) => {
+          onMove(e.absoluteY);
+        })
+        .onEnd(() => {
+          onEnd();
+        })
+        .onFinalize(() => {
+          onCancel(); // limpia estado visual si fue cancelado (idempotente)
+        }),
+    [itemId, fromIndex, onStart, onMove, onEnd, onCancel]
+  );
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <View style={styles.dragHandle}>
+        <MaterialIcons name="drag-handle" size={22} color="#c0c8d0" />
+      </View>
+    </GestureDetector>
+  );
+}
+
+// ─── Asignaciones ──────────────────────────────────────────────────────────────
 export default function Asignaciones() {
   const [repartidores, setRepartidores] = useState<Usuario[]>([]);
   const [repSeleccionado, setRepSeleccionado] = useState<Usuario | null>(null);
@@ -57,7 +99,95 @@ export default function Asignaciones() {
   const [guardandoRutaFija, setGuardandoRutaFija] = useState(false);
   const [generando, setGenerando] = useState(false);
 
-  // Conteo de visitas ya asignadas por cliente
+  // ── Drag-and-drop ──────────────────────────────────────────────────────────
+  const [localOrder, setLocalOrder] = useState<Asignacion[]>([]);
+  const [dragging, setDragging] = useState<{ id: string; fromIndex: number } | null>(null);
+  const [insertIndex, setInsertIndex] = useState(-1);
+
+  // Refs estables para los gesture callbacks (evitan closures viejas)
+  const localOrderRef = useRef<Asignacion[]>([]);
+  const listContainerRef = useRef<View>(null);
+  const listContainerY = useRef(0);
+  const itemYsRef = useRef<Record<string, number>>({});
+  const itemHsRef = useRef<Record<string, number>>({});
+  const draggingIdRef = useRef<string | null>(null);
+  const insertIndexRef = useRef(-1);
+  const isDraggingRef = useRef(false);
+
+  // Sincronizar localOrder con asignaciones (solo cuando no hay drag activo)
+  useEffect(() => {
+    if (!isDraggingRef.current) {
+      const sorted = [...asignaciones].sort((a, b) => a.orden - b.orden);
+      setLocalOrder(sorted);
+      localOrderRef.current = sorted;
+    }
+  }, [asignaciones]);
+
+  // ── Drag callbacks ─────────────────────────────────────────────────────────
+  const onDragStart = useCallback((id: string, fromIndex: number) => {
+    isDraggingRef.current = true;
+    draggingIdRef.current = id;
+    insertIndexRef.current = fromIndex;
+    setDragging({ id, fromIndex });
+    setInsertIndex(fromIndex);
+    listContainerRef.current?.measure((_x, _y, _w, _h, _px, py) => {
+      listContainerY.current = py;
+    });
+  }, []);
+
+  const onDragMove = useCallback((absoluteY: number) => {
+    const order = localOrderRef.current;
+    const relY = absoluteY - listContainerY.current;
+    let newIndex = order.length; // default: al final
+    for (let i = 0; i < order.length; i++) {
+      const y = itemYsRef.current[order[i].id] ?? 0;
+      const h = itemHsRef.current[order[i].id] ?? 60;
+      if (relY < y + h / 2) {
+        newIndex = i;
+        break;
+      }
+    }
+    if (newIndex !== insertIndexRef.current) {
+      insertIndexRef.current = newIndex;
+      setInsertIndex(newIndex);
+    }
+  }, []);
+
+  const onDragEnd = useCallback(() => {
+    const id = draggingIdRef.current;
+    const toIndex = insertIndexRef.current;
+    draggingIdRef.current = null;
+    isDraggingRef.current = false;
+    setDragging(null);
+    setInsertIndex(-1);
+    if (!id) return;
+
+    setLocalOrder((prev) => {
+      const fromIdx = prev.findIndex((x) => x.id === id);
+      if (fromIdx < 0) return prev;
+      // Ajustar toIndex: al sacar el elemento, los índices posteriores bajan 1
+      const adjustedTo = fromIdx < toIndex ? toIndex - 1 : toIndex;
+      if (adjustedTo === fromIdx) return prev;
+      const arr = [...prev];
+      const [item] = arr.splice(fromIdx, 1);
+      arr.splice(Math.min(adjustedTo, arr.length), 0, item);
+      localOrderRef.current = arr;
+      const ordenes = arr.map((a, i) => ({ id: a.id, orden: i }));
+      void reordenarAsignaciones(ordenes);
+      return arr;
+    });
+  }, []);
+
+  const onDragCancel = useCallback(() => {
+    // Idempotente: si ya se limpió en onDragEnd, no hace nada
+    if (!isDraggingRef.current && !draggingIdRef.current) return;
+    draggingIdRef.current = null;
+    isDraggingRef.current = false;
+    setDragging(null);
+    setInsertIndex(-1);
+  }, []);
+
+  // ── Carga de datos ─────────────────────────────────────────────────────────
   const visitasPorCliente = asignaciones.reduce<Record<string, number>>((acc, a) => {
     acc[a.clienteId] = (acc[a.clienteId] ?? 0) + 1;
     return acc;
@@ -117,8 +247,7 @@ export default function Asignaciones() {
         Alert.alert('Sin cambios', 'Todas las visitas de la ruta fija ya estaban asignadas para este día.');
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'No se pudo aplicar la ruta.';
-      Alert.alert('Error al aplicar', msg);
+      Alert.alert('Error al aplicar', e instanceof Error ? e.message : 'No se pudo aplicar la ruta.');
     } finally {
       setGenerando(false);
     }
@@ -140,10 +269,7 @@ export default function Asignaciones() {
     if (!repSeleccionado) return;
     setCargando(true);
     try {
-      const lista = await obtenerAsignaciones({
-        repartidorId: repSeleccionado.id,
-        fecha,
-      });
+      const lista = await obtenerAsignaciones({ repartidorId: repSeleccionado.id, fecha });
       setAsignaciones(lista);
     } catch (e) {
       console.warn('cargarAsignaciones:', e);
@@ -161,11 +287,11 @@ export default function Asignaciones() {
     void cargarRutaFija();
   }, [cargarAsignaciones, cargarRutaFija]);
 
-  // Polling cada 5s para ver entregas en tiempo real
+  // Polling cada 5s — pausado durante drag activo
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     pollingRef.current = setInterval(() => {
-      void cargarAsignaciones();
+      if (!isDraggingRef.current) void cargarAsignaciones();
     }, 5000);
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
@@ -199,11 +325,7 @@ export default function Asignaciones() {
     if (!repSeleccionado || seleccionados.size === 0) return;
     setGuardando(true);
     try {
-      await crearAsignacionesBulk(
-        repSeleccionado.id,
-        [...seleccionados],
-        fecha
-      );
+      await crearAsignacionesBulk(repSeleccionado.id, [...seleccionados], fecha);
       setModalVisible(false);
       await cargarAsignaciones();
     } catch (e) {
@@ -231,11 +353,9 @@ export default function Asignaciones() {
     );
   });
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <Screen
-      title="Asignaciones"
-      subtitle={`Clientes para el ${formatFecha(fecha)}`}
-    >
+    <Screen title="Asignaciones" subtitle={`Clientes para el ${formatFecha(fecha)}`}>
       {/* Selector de repartidor */}
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>Repartidor</Text>
@@ -293,16 +413,21 @@ export default function Asignaciones() {
         </View>
       ) : null}
 
-      {/* Lista de asignaciones del día */}
+      {/* Lista de asignaciones con drag-and-drop */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionLabel}>
-            Clientes asignados ({asignaciones.length})
+            Clientes asignados ({localOrder.length})
           </Text>
-          {cargando && <ActivityIndicator size="small" color={COLORS.verdePrincipal} />}
+          <View style={styles.sectionHeaderRight}>
+            {dragging && (
+              <Text style={styles.draggingHint}>Arrastrando…</Text>
+            )}
+            {cargando && <ActivityIndicator size="small" color={COLORS.verdePrincipal} />}
+          </View>
         </View>
 
-        {!cargando && asignaciones.length === 0 && (
+        {!cargando && localOrder.length === 0 && (
           <View style={styles.emptyCard}>
             <MaterialIcons name="person-add-alt" size={36} color={COLORS.grisSecundario} />
             <Text style={styles.emptyText}>
@@ -313,71 +438,124 @@ export default function Asignaciones() {
           </View>
         )}
 
-        {asignaciones.map((a, idx) => {
-          const entregado = a.estado === 'entregado';
-          const problema = a.estado === 'problema';
-          const enCamino = a.estado === 'en_camino';
-          const visitasDelCliente = asignaciones.filter(x => x.clienteId === a.clienteId).length;
-          const numeroVisita = asignaciones.filter((x, i) => x.clienteId === a.clienteId && i <= idx).length;
-          return (
-          <View
-            key={a.id}
-            style={[
-              styles.asigCard,
-              entregado && styles.asigCardEntregado,
-              problema && styles.asigCardProblema,
-            ]}
-          >
-            <View style={styles.asigLeft}>
-              <View style={[styles.asigNumWrap, entregado && styles.asigNumEntregado, problema && styles.asigNumProblema]}>
-                <Text style={[styles.asigNum, (entregado || problema) && { color: '#fff' }]}>{idx + 1}</Text>
-              </View>
-              <View style={styles.asigInfo}>
-                <View style={styles.asigRow}>
-                  <Text style={styles.asigNombre}>{a.cliente.nombre}</Text>
-                  {visitasDelCliente > 1 && (
-                    <View style={styles.visitaBadge}>
-                      <Text style={styles.visitaBadgeText}>Visita {numeroVisita}</Text>
-                    </View>
+        {/* Contenedor del drag: onLayout mide su Y absoluta */}
+        <View
+          ref={listContainerRef}
+          onLayout={() => {
+            listContainerRef.current?.measure((_x, _y, _w, _h, _px, py) => {
+              listContainerY.current = py;
+            });
+          }}
+        >
+          {localOrder.map((a, idx) => {
+            const entregado = a.estado === 'entregado';
+            const problema = a.estado === 'problema';
+            const enCamino = a.estado === 'en_camino';
+            const visitasDelCliente = localOrder.filter((x) => x.clienteId === a.clienteId).length;
+            const numeroVisita = localOrder.filter((x, i) => x.clienteId === a.clienteId && i <= idx).length;
+            const esDragging = dragging?.id === a.id;
+
+            return (
+              <View
+                key={a.id}
+                onLayout={(e) => {
+                  itemYsRef.current[a.id] = e.nativeEvent.layout.y;
+                  itemHsRef.current[a.id] = e.nativeEvent.layout.height;
+                }}
+              >
+                {/* Línea de inserción encima de este ítem */}
+                {dragging && insertIndex === idx && (
+                  <View style={styles.insertLine} />
+                )}
+
+                <View
+                  style={[
+                    styles.asigCard,
+                    entregado && styles.asigCardEntregado,
+                    problema && styles.asigCardProblema,
+                    esDragging && styles.asigCardDragging,
+                  ]}
+                >
+                  {/* Handle de drag (solo en ítems no entregados) */}
+                  {!entregado && (
+                    <DragHandle
+                      itemId={a.id}
+                      fromIndex={idx}
+                      onStart={onDragStart}
+                      onMove={onDragMove}
+                      onEnd={onDragEnd}
+                      onCancel={onDragCancel}
+                    />
                   )}
-                  <View style={[styles.tipoBadge, a.cliente.tipo === 'taller' ? styles.badgeTaller : styles.badgeCliente]}>
-                    <Text style={styles.tipoText}>{a.cliente.tipo}</Text>
+
+                  <View style={styles.asigLeft}>
+                    <View
+                      style={[
+                        styles.asigNumWrap,
+                        entregado && styles.asigNumEntregado,
+                        problema && styles.asigNumProblema,
+                      ]}
+                    >
+                      <Text style={[styles.asigNum, (entregado || problema) && { color: '#fff' }]}>
+                        {idx + 1}
+                      </Text>
+                    </View>
+                    <View style={styles.asigInfo}>
+                      <View style={styles.asigRow}>
+                        <Text style={styles.asigNombre}>{a.cliente.nombre}</Text>
+                        {visitasDelCliente > 1 && (
+                          <View style={styles.visitaBadge}>
+                            <Text style={styles.visitaBadgeText}>Visita {numeroVisita}</Text>
+                          </View>
+                        )}
+                        <View style={[styles.tipoBadge, a.cliente.tipo === 'taller' ? styles.badgeTaller : styles.badgeCliente]}>
+                          <Text style={styles.tipoText}>{a.cliente.tipo}</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.asigDir}>{a.cliente.direccion}</Text>
+                      <View style={styles.asigRow}>
+                        <View
+                          style={[
+                            styles.estadoBadge,
+                            entregado && styles.estadoEntregado,
+                            problema && styles.estadoProblema,
+                            enCamino && styles.estadoEnCamino,
+                          ]}
+                        >
+                          <Text style={[styles.estadoText, (entregado || problema || enCamino) && { color: '#fff' }]}>
+                            {a.estado === 'pendiente' ? 'Pendiente' :
+                             a.estado === 'en_camino' ? 'En camino' :
+                             a.estado === 'entregado' ? '✓ Entregado' : 'Problema'}
+                          </Text>
+                        </View>
+                        {a.horaLlegadaMs ? (
+                          <Text style={styles.asigHora}>
+                            {new Date(a.horaLlegadaMs).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {a.notasAdmin ? <Text style={styles.asigNota}>{a.notasAdmin}</Text> : null}
+                      {a.notasRepartidor ? <Text style={styles.asigNotaRep}>"{a.notasRepartidor}"</Text> : null}
+                    </View>
                   </View>
+
+                  {!entregado ? (
+                    <Pressable style={styles.removeBtn} onPress={() => void quitarAsignacion(a.id)}>
+                      <MaterialIcons name="close" size={18} color={COLORS.error} />
+                    </Pressable>
+                  ) : (
+                    <MaterialIcons name="check-circle" size={22} color={COLORS.verdePrincipal} />
+                  )}
                 </View>
-                <Text style={styles.asigDir}>{a.cliente.direccion}</Text>
-                <View style={styles.asigRow}>
-                  <View style={[
-                    styles.estadoBadge,
-                    entregado && styles.estadoEntregado,
-                    problema && styles.estadoProblema,
-                    enCamino && styles.estadoEnCamino,
-                  ]}>
-                    <Text style={[styles.estadoText, (entregado || problema || enCamino) && { color: '#fff' }]}>
-                      {a.estado === 'pendiente' ? 'Pendiente' :
-                       a.estado === 'en_camino' ? 'En camino' :
-                       a.estado === 'entregado' ? '✓ Entregado' : 'Problema'}
-                    </Text>
-                  </View>
-                  {a.horaLlegadaMs ? (
-                    <Text style={styles.asigHora}>
-                      {new Date(a.horaLlegadaMs).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
-                  ) : null}
-                </View>
-                {a.notasAdmin ? <Text style={styles.asigNota}>{a.notasAdmin}</Text> : null}
-                {a.notasRepartidor ? <Text style={styles.asigNotaRep}>"{a.notasRepartidor}"</Text> : null}
               </View>
-            </View>
-            {!entregado ? (
-              <Pressable style={styles.removeBtn} onPress={() => void quitarAsignacion(a.id)}>
-                <MaterialIcons name="close" size={18} color={COLORS.error} />
-              </Pressable>
-            ) : (
-              <MaterialIcons name="check-circle" size={22} color={COLORS.verdePrincipal} />
-            )}
-          </View>
-          );
-        })}
+            );
+          })}
+
+          {/* Línea de inserción al final de la lista */}
+          {dragging && insertIndex >= localOrder.length && (
+            <View style={styles.insertLine} />
+          )}
+        </View>
       </View>
 
       {repSeleccionado && (
@@ -477,7 +655,7 @@ export default function Asignaciones() {
         </View>
       </Modal>
 
-      {/* Modal selector de clientes del catálogo */}
+      {/* Modal selector de clientes */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -516,10 +694,7 @@ export default function Asignaciones() {
               const estaSeleccionado = seleccionados.has(item.id);
               return (
                 <Pressable
-                  style={[
-                    styles.catalogoCard,
-                    estaSeleccionado && styles.catalogoCardSel,
-                  ]}
+                  style={[styles.catalogoCard, estaSeleccionado && styles.catalogoCardSel]}
                   onPress={() => toggleSeleccion(item.id)}
                 >
                   <View style={styles.catalogoInfo}>
@@ -544,9 +719,7 @@ export default function Asignaciones() {
                 </Pressable>
               );
             }}
-            ListEmptyComponent={
-              <Text style={styles.empty}>No se encontraron clientes.</Text>
-            }
+            ListEmptyComponent={<Text style={styles.empty}>No se encontraron clientes.</Text>}
           />
 
           <View style={styles.modalFooter}>
@@ -566,7 +739,13 @@ export default function Asignaciones() {
 const styles = StyleSheet.create({
   section: { gap: 8 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sectionHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionLabel: { fontFamily: 'Poppins_700Bold', fontSize: 14, color: COLORS.grisTexto },
+  draggingHint: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 12,
+    color: COLORS.verdePrincipal,
+  },
 
   // Chips de repartidores
   chips: { flexGrow: 0 },
@@ -602,6 +781,14 @@ const styles = StyleSheet.create({
   },
   empty: { fontFamily: 'Poppins_400Regular', color: COLORS.grisSecundario, padding: 12 },
 
+  // Línea de inserción (drag indicator)
+  insertLine: {
+    height: 3,
+    backgroundColor: COLORS.verdePrincipal,
+    borderRadius: 2,
+    marginVertical: 3,
+  },
+
   // Tarjeta de asignación
   asigCard: {
     backgroundColor: '#fff',
@@ -611,8 +798,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#e8ecef',
-    gap: 10,
+    gap: 6,
+    marginBottom: 6,
   },
+  asigCardEntregado: { borderColor: '#52c47a', backgroundColor: '#f6fff8' },
+  asigCardProblema: { borderColor: '#e06a6a', backgroundColor: '#fff6f6' },
+  asigCardDragging: {
+    borderColor: COLORS.verdePrincipal,
+    backgroundColor: '#f0fae8',
+    opacity: 0.7,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+
+  // Drag handle
+  dragHandle: {
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   asigLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   asigNumWrap: {
     width: 28,
@@ -633,9 +842,9 @@ const styles = StyleSheet.create({
     color: COLORS.acentoNaranja,
     fontStyle: 'italic',
   },
+  asigNotaRep: { fontFamily: 'Poppins_400Regular', fontSize: 11, color: COLORS.grisSecundario, fontStyle: 'italic' },
+  asigHora: { fontFamily: 'Poppins_400Regular', fontSize: 11, color: COLORS.grisSecundario },
   removeBtn: { padding: 6 },
-  asigCardEntregado: { borderColor: '#52c47a', backgroundColor: '#f6fff8' },
-  asigCardProblema: { borderColor: '#e06a6a', backgroundColor: '#fff6f6' },
   asigNumEntregado: { backgroundColor: COLORS.verdePrincipal },
   asigNumProblema: { backgroundColor: COLORS.error },
   estadoBadge: {
@@ -648,14 +857,7 @@ const styles = StyleSheet.create({
   estadoProblema: { backgroundColor: COLORS.error },
   estadoEnCamino: { backgroundColor: COLORS.acentoAzul },
   estadoText: { fontFamily: 'Poppins_600SemiBold', fontSize: 11, color: COLORS.grisTexto },
-  asigHora: { fontFamily: 'Poppins_400Regular', fontSize: 11, color: COLORS.grisSecundario },
-  asigNotaRep: { fontFamily: 'Poppins_400Regular', fontSize: 11, color: COLORS.grisSecundario, fontStyle: 'italic' },
-  visitaBadge: {
-    backgroundColor: '#e8f0fe',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
+  visitaBadge: { backgroundColor: '#e8f0fe', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
   visitaBadgeText: { fontFamily: 'Poppins_600SemiBold', fontSize: 10, color: '#3b5bdb' },
 
   // Badges
@@ -715,19 +917,11 @@ const styles = StyleSheet.create({
     borderColor: '#e8ecef',
     gap: 10,
   },
-  catalogoCardSel: {
-    borderColor: COLORS.verdeOscuro,
-    backgroundColor: '#f0fae8',
-  },
-  catalogoCardAsignado: {
-    opacity: 0.55,
-    backgroundColor: '#fafafa',
-  },
+  catalogoCardSel: { borderColor: COLORS.verdeOscuro, backgroundColor: '#f0fae8' },
   catalogoInfo: { flex: 1, gap: 3 },
   catalogoNombre: { fontFamily: 'Poppins_700Bold', fontSize: 14, color: COLORS.grisTexto, flex: 1 },
   catalogoDir: { fontFamily: 'Poppins_400Regular', fontSize: 12, color: COLORS.grisSecundario },
   yaAsignadoText: { fontFamily: 'Poppins_600SemiBold', fontSize: 11, color: COLORS.grisSecundario },
-  textDim: { color: COLORS.grisSecundario },
   modalFooter: { padding: 16, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e8ecef' },
 
   // Ruta fija
