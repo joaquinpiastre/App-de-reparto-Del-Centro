@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../auth.js';
 import { pool } from '../db/client.js';
+type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' } };
 
 const itemSchema = z.object({
   codigo: z.string().optional(),
@@ -44,8 +45,13 @@ async function ensureColumns(): Promise<void> {
   await pool.query(`alter table pedidos_calle add column if not exists cliente_nombre text`);
 }
 
-pedidosCalleRouter.get('/pedidos-calle', requireAuth, async (_req, res) => {
+pedidosCalleRouter.get('/pedidos-calle', requireAuth, async (req, res) => {
   await ensureColumns();
+  const user = (req as ReqWithUser).user;
+  const esAdmin = user?.rol === 'admin';
+  // Admins ven todos los pedidos (incluyendo los ya cerrados con jornada_id).
+  // Repartidores solo ven los abiertos (sin jornada_id).
+  const whereJornada = esAdmin ? '' : 'where p.jornada_id is null';
   const { rows } = await pool.query(
     `select
        p.id,
@@ -58,6 +64,7 @@ pedidosCalleRouter.get('/pedidos-calle', requireAuth, async (_req, res) => {
        p.clientes_misma_calle as "clientesMismaCalle",
        p.estado,
        p.creado_en_ms as "creadoEn",
+       p.jornada_id as "jornadaId",
        p.cliente_id as "clienteId",
        p.cliente_nombre as "clienteNombre",
        coalesce(
@@ -74,7 +81,7 @@ pedidosCalleRouter.get('/pedidos-calle', requireAuth, async (_req, res) => {
        ) as items
      from pedidos_calle p
      left join pedido_calle_items i on i.pedido_id = p.id
-     where p.jornada_id is null
+     ${whereJornada}
      group by p.id
      order by p.creado_en_ms desc`
   );

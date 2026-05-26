@@ -1,10 +1,10 @@
 import { create } from 'zustand';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 
 import { optimizarRuta } from '@/hooks/useRuta';
 import { actualizarEstadoAsignacion, obtenerAsignaciones } from '@/services/asignaciones';
 import { registrarCierreJornadaApi } from '@/services/entregasApi';
-import { detenerGPS, iniciarGPS } from '@/services/gps';
+import { detenerGPS, iniciarGPS, iniciarGPSPresencia } from '@/services/gps';
 import { cerrarTurnoPedidosCalle } from '@/services/pedidosCalle';
 import type { Asignacion, Cliente, Coordenadas, EstadoEntrega, Usuario } from '@/types';
 
@@ -93,7 +93,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
   fotoPendienteUri: null,
   entregaTimerSegundos: 0,
 
-  setUsuario: (usuario) => set({ usuario }),
+  setUsuario: (usuario) => {
+    set({ usuario });
+    if (Platform.OS !== 'web' && usuario?.rol === 'repartidor') {
+      void iniciarGPSPresencia(usuario.id, usuario.nombre).catch(() => {});
+    }
+  },
   setClientesDelDia: (clientes) => set({ clientesDelDia: clientes }),
   setUltimaPosicion: (c) => set({ ultimaPosicion: c }),
   setFotoPendienteUri: (uri) => set({ fotoPendienteUri: uri }),
@@ -145,7 +150,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   pausarJornada: async () => {
     set({ gpsActivo: false });
-    await detenerGPS().catch((err) => console.warn('detenerGPS:', err));
+    // Revertir a presencia en lugar de detener completamente: el admin sigue viendo la posición
+    await detenerGPS(true).catch((err) => console.warn('detenerGPS:', err));
   },
 
   cerrarJornada: async () => {
@@ -188,7 +194,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       fotoPendienteUri: null,
       entregaTimerSegundos: 0,
     });
-    await detenerGPS().catch((err) => console.warn('detenerGPS:', err));
+    // Revertir a presencia: el admin sigue viendo al repartidor aunque terminó el turno
+    await detenerGPS(true).catch((err) => console.warn('detenerGPS:', err));
   },
 
   resetSesion: () => {
@@ -205,6 +212,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       fotoPendienteUri: null,
       entregaTimerSegundos: 0,
     });
+    // Parada completa del GPS en logout
+    void detenerGPS(false).catch((err) => console.warn('detenerGPS logout:', err));
   },
 
   siguienteCliente: () => {

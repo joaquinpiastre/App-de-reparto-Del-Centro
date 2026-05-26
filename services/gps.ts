@@ -11,16 +11,26 @@ const LOCATION_TASK = 'background-location-task';
 const GPS_ACTIVO_KEY = 'gps_activo';
 const BATERIA_SOLICITADA_KEY = 'bateria_exencion_solicitada';
 
+function presenciaJornadaId(repartidorId: string): string {
+  const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  return `pres-${repartidorId}-${fecha}`;
+}
+
 export async function mandarPosicionGPS(
   lat: number,
   lng: number,
   velocidad: number,
   precision: number
 ): Promise<void> {
-  const jornadaId = await AsyncStorage.getItem('jornada_id');
   const repartidorId = await AsyncStorage.getItem('repartidor_id');
+  if (!repartidorId || !API_ENABLED) return;
   const repartidorNombre = await AsyncStorage.getItem('repartidor_nombre');
-  if (!jornadaId || !repartidorId || !API_ENABLED) return;
+  // Si no hay jornada real activa, usar jornada de presencia del día
+  let jornadaId = await AsyncStorage.getItem('jornada_id');
+  if (!jornadaId) {
+    jornadaId = presenciaJornadaId(repartidorId);
+    await AsyncStorage.setItem('jornada_id', jornadaId);
+  }
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (MOBILE_API_KEY) {
@@ -101,11 +111,42 @@ async function solicitarExencionBateria(): Promise<void> {
   }
 }
 
+async function arrancarLocationTask(notificationBody: string): Promise<void> {
+  await Location.startLocationUpdatesAsync(LOCATION_TASK, {
+    accuracy: Location.Accuracy.High,
+    timeInterval: 5000,
+    distanceInterval: 0,
+    deferredUpdatesInterval: 0,
+    deferredUpdatesDistance: 0,
+    showsBackgroundLocationIndicator: true,
+    pausesUpdatesAutomatically: false,
+    activityType: Location.ActivityType.AutomotiveNavigation,
+    foregroundService: {
+      notificationTitle: 'Del Centro — GPS Activo',
+      notificationBody,
+      notificationColor: '#6DC921',
+      killServiceOnDestroy: false,
+    },
+  });
+  await AsyncStorage.setItem(GPS_ACTIVO_KEY, '1');
+}
+
+/**
+ * Inicia GPS en modo jornada real.
+ * Si el GPS ya estaba corriendo en modo presencia, solo actualiza el jornadaId.
+ */
 export async function iniciarGPS(jornadaId: string, repartidorId: string, repartidorNombre?: string) {
   await AsyncStorage.setItem('jornada_id', jornadaId);
   await AsyncStorage.setItem('repartidor_id', repartidorId);
   if (repartidorNombre) {
     await AsyncStorage.setItem('repartidor_nombre', repartidorNombre);
+  }
+
+  // Si ya está corriendo (modo presencia), solo cambia el jornadaId — no es necesario reiniciar
+  const yaActivo = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);
+  if (yaActivo) {
+    await AsyncStorage.setItem(GPS_ACTIVO_KEY, '1');
+    return;
   }
 
   const { status } = await Location.requestForegroundPermissionsAsync();
@@ -114,39 +155,59 @@ export async function iniciarGPS(jornadaId: string, repartidorId: string, repart
     throw new Error('Permiso de GPS denegado');
   }
 
-  // Detener si ya estaba corriendo para evitar duplicados
-  const yaActivo = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);
-  if (yaActivo) await Location.stopLocationUpdatesAsync(LOCATION_TASK);
-
-  await Location.startLocationUpdatesAsync(LOCATION_TASK, {
-    accuracy: Location.Accuracy.High,
-    // timeInterval es el mínimo entre actualizaciones (ms)
-    timeInterval: 5000,
-    // distanceInterval: sin distancia mínima → siempre actualiza cada timeInterval
-    distanceInterval: 0,
-    // Evita que Android agrupe y postergue las actualizaciones (crucial para pantalla apagada)
-    deferredUpdatesInterval: 0,
-    deferredUpdatesDistance: 0,
-    showsBackgroundLocationIndicator: true,
-    pausesUpdatesAutomatically: false,
-    activityType: Location.ActivityType.AutomotiveNavigation,
-    foregroundService: {
-      notificationTitle: 'Del Centro — GPS Activo',
-      notificationBody: 'Rastreando tu ruta de reparto',
-      notificationColor: '#6DC921',
-      // El servicio no muere aunque el usuario cierre la app desde recientes
-      killServiceOnDestroy: false,
-    },
-  });
-
-  await AsyncStorage.setItem(GPS_ACTIVO_KEY, '1');
-
-  // Solicitar exención de batería (solo la primera vez, después de iniciar el GPS)
+  await arrancarLocationTask('Rastreando tu ruta de reparto');
   void solicitarExencionBateria();
 }
 
-export async function detenerGPS() {
+/**
+ * Inicia GPS en modo presencia (sin jornada real activa).
+ * Se llama al iniciar sesión para que el admin pueda ver dónde está el repartidor.
+ * No lanza error si los permisos no están: falla silenciosamente.
+ */
+export async function iniciarGPSPresencia(repartidorId: string, repartidorNombre: string): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    await AsyncStorage.setItem('repartidor_id', repartidorId);
+    await AsyncStorage.setItem('repartidor_nombre', repartidorNombre);
+
+    // Solo establecer presencia si no hay una jornada real activa
+    const jornadaActual = await AsyncStorage.getItem('jornada_id');
+    if (!jornadaActual || jornadaActual.startsWith('pres-')) {
+      await AsyncStorage.setItem('jornada_id', presenciaJornadaId(repartidorId));
+    }
+
+    // Si GPS ya está corriendo, simplemente seguimos usando el mismo task
+    const yaActivo = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);
+    if (yaActivo) return;
+
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') return;
+    const bg = await Location.requestBackgroundPermissionsAsync();
+    if (bg.status !== 'granted') return;
+
+    await arrancarLocationTask('Seguimiento de ubicación activo');
+    void solicitarExencionBateria();
+  } catch (e) {
+    console.warn('iniciarGPSPresencia:', e);
+  }
+}
+
+/**
+ * Detiene el GPS completamente (logout) o revierte al modo presencia (fin de jornada).
+ * @param revertirAPresencia Si true, el GPS sigue corriendo pero con jornadaId de presencia.
+ */
+export async function detenerGPS(revertirAPresencia = false) {
+  if (revertirAPresencia) {
+    const repartidorId = await AsyncStorage.getItem('repartidor_id');
+    if (repartidorId) {
+      await AsyncStorage.setItem('jornada_id', presenciaJornadaId(repartidorId));
+    }
+    // El task sigue corriendo — GPS_ACTIVO_KEY se mantiene
+    return;
+  }
+  // Parada completa (logout)
   await AsyncStorage.removeItem(GPS_ACTIVO_KEY);
+  await AsyncStorage.removeItem('jornada_id');
   const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);
   if (started) await Location.stopLocationUpdatesAsync(LOCATION_TASK);
 }

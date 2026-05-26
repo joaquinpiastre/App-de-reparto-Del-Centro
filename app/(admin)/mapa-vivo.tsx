@@ -49,7 +49,7 @@ export default function MapaVivo() {
   return (
     <Screen
       title="Mapa en tiempo real"
-      subtitle={`Repartidores en reparto: ${telefonos.length}`}
+      subtitle={`Repartidores visibles: ${telefonos.length}`}
     >
       {avisoApi ? <Text style={styles.aviso}>{avisoApi}</Text> : null}
       {error ? <Text style={styles.err}>{error}</Text> : null}
@@ -65,7 +65,7 @@ export default function MapaVivo() {
         </View>
       ) : null}
       <Text style={styles.legend}>
-        Ubicaciones desde la API · actualiza cada 3s
+        Visible desde que inician sesión · actualiza cada 3s
       </Text>
     </Screen>
   );

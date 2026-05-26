@@ -237,7 +237,7 @@ adminPedidosRouter.post('/admin-pedidos', requireAuth, async (req, res) => {
     await pool.query(
       `insert into repartidores (id, nombre, rol, activo)
        values ($1, $2, 'repartidor', true)
-       on conflict (id) do update set nombre = excluded.nombre, activo = true`,
+       on conflict (id) do update set activo = true`,
       [p.repartidorId, p.repartidorNombre]
     );
 
@@ -320,7 +320,7 @@ adminPedidosRouter.patch('/admin-pedidos/:id/asignar', requireAuth, async (req, 
   await pool.query(
     `insert into repartidores (id, nombre, rol, activo)
      values ($1, $2, 'repartidor', true)
-     on conflict (id) do update set nombre = excluded.nombre, activo = true`,
+     on conflict (id) do update set activo = true`,
     [repartidorId, repartidorNombre]
   );
   await pool.query(

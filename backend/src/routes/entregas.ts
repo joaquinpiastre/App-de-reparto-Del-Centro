@@ -82,7 +82,7 @@ async function ensureRepartidorYJornada(
   await pool.query(
     `insert into repartidores (id, nombre, rol, activo)
      values ($1, $2, 'repartidor', true)
-     on conflict (id) do update set nombre = excluded.nombre, activo = true`,
+     on conflict (id) do update set activo = true`,
     [repartidorId, nombre]
   );
   await pool.query(

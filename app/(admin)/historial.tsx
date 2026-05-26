@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { MapaRecorridoHistorial } from '@/components/mapa/MapaRecorridoHistorial';
 import { Screen } from '@/components/ui/Screen';
@@ -13,7 +13,7 @@ import {
   type PedidoJornadaHistorial,
   type RecorridoJornadaResponse,
 } from '@/services/adminReportes';
-import { obtenerPedidosCalleFinalizados } from '@/services/pedidosCalle';
+import { obtenerTodosLosPedidosCalle } from '@/services/pedidosCalle';
 import type { PedidoCalle } from '@/types';
 import type { CierreJornadaResumen } from '@/store/useHistorialStore';
 
@@ -47,7 +47,7 @@ export default function Historial() {
   const cargarPedidosCalle = async () => {
     try {
       setLoadingPedidosCalle(true);
-      const data = await obtenerPedidosCalleFinalizados();
+      const data = await obtenerTodosLosPedidosCalle();
       setPedidosCalleFinalizados(data.sort((a, b) => b.creadoEn - a.creadoEn));
     } catch {
       setPedidosCalleFinalizados([]);
@@ -101,7 +101,7 @@ export default function Historial() {
   };
 
   return (
-    <Screen title="Historial de rutas" subtitle="Cierres de jornada registrados en backend">
+    <Screen title="Historial de rutas" subtitle="Cierres de jornada registrados en backend" scrollable>
       <View style={styles.topRow}>
         <Button
           label={loading ? 'ACTUALIZANDO…' : 'ACTUALIZAR'}
@@ -147,42 +147,37 @@ export default function Historial() {
           <Text style={styles.row}>Los cierres aparecen cuando hay entregas registradas.</Text>
         </View>
       ) : (
-        <FlatList
-          data={cierres}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingBottom: 24 }}
-          renderItem={({ item: c }) => (
-            <View style={styles.card}>
-              <Text style={styles.title}>
-                {new Date(c.fechaIso).toLocaleString('es-AR')} · {c.repartidorNombre}
-              </Text>
-              <Text style={styles.row}>
-                {c.completados}/{c.total} entregas · {c.minutosEnRuta} min en ruta
-              </Text>
-              <View style={styles.actionRow}>
-                <View style={styles.actionBtn}>
-                  <Button label="Ver recorrido" variant="secondary" onPress={() => setSeleccionado(c)} />
-                </View>
-                <View style={styles.actionBtn}>
-                  <Button
-                    label={loadingPedidos && seleccionado?.id === c.id ? 'Cargando pedidos…' : 'Ver pedidos'}
-                    variant="secondary"
-                    loading={loadingPedidos && seleccionado?.id === c.id}
-                    onPress={() => void verPedidos(c.id)}
-                  />
-                </View>
-                <View style={styles.actionBtn}>
-                  <Button
-                    label={loadingEntregas && seleccionado?.id === c.id ? 'Cargando entregas…' : 'Ver entregas'}
-                    variant="secondary"
-                    loading={loadingEntregas && seleccionado?.id === c.id}
-                    onPress={() => void verEntregas(c.id)}
-                  />
-                </View>
+        cierres.map((c) => (
+          <View key={c.id} style={styles.card}>
+            <Text style={styles.title}>
+              {new Date(c.fechaIso).toLocaleString('es-AR')} · {c.repartidorNombre}
+            </Text>
+            <Text style={styles.row}>
+              {c.completados}/{c.total} entregas · {c.minutosEnRuta} min en ruta
+            </Text>
+            <View style={styles.actionRow}>
+              <View style={styles.actionBtn}>
+                <Button label="Ver recorrido" variant="secondary" onPress={() => setSeleccionado(c)} />
+              </View>
+              <View style={styles.actionBtn}>
+                <Button
+                  label={loadingPedidos && seleccionado?.id === c.id ? 'Cargando pedidos…' : 'Ver pedidos'}
+                  variant="secondary"
+                  loading={loadingPedidos && seleccionado?.id === c.id}
+                  onPress={() => void verPedidos(c.id)}
+                />
+              </View>
+              <View style={styles.actionBtn}>
+                <Button
+                  label={loadingEntregas && seleccionado?.id === c.id ? 'Cargando entregas…' : 'Ver entregas'}
+                  variant="secondary"
+                  loading={loadingEntregas && seleccionado?.id === c.id}
+                  onPress={() => void verEntregas(c.id)}
+                />
               </View>
             </View>
-          )}
-        />
+          </View>
+        ))
       )}
       {pedidosJornada.length > 0 ? (
         <View style={styles.card}>
@@ -215,35 +210,40 @@ export default function Historial() {
         </View>
       ) : null}
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Pedidos de calle finalizados</Text>
-        <Text style={styles.row}>Pedidos que los repartidores levantaron en la calle y ya fueron retirados o cancelados.</Text>
+        <Text style={styles.sectionTitle}>Pedidos levantados en calle</Text>
+        <Text style={styles.row}>Todos los pedidos que los repartidores levantaron en la calle.</Text>
         {loadingPedidosCalle ? (
           <Text style={styles.row}>Cargando…</Text>
         ) : pedidosCalleFinalizados.length === 0 ? (
-          <Text style={styles.row}>Sin pedidos de calle finalizados aún.</Text>
+          <Text style={styles.row}>Sin pedidos de calle registrados aún.</Text>
         ) : (
-          pedidosCalleFinalizados.map((p) => (
-            <View key={p.id} style={[styles.subCard, p.estado === 'cancelado' && styles.subCardCancelado]}>
-              <View style={styles.pcRepartidorTag}>
-                <Text style={styles.pcRepartidorTagText}>{p.repartidorNombre}</Text>
+          pedidosCalleFinalizados.map((p) => {
+            const esRetirado = p.estado === 'retirado';
+            const esCancelado = p.estado === 'cancelado';
+            const esPendiente = !esRetirado && !esCancelado;
+            return (
+              <View key={p.id} style={[styles.subCard, esCancelado && styles.subCardCancelado]}>
+                <View style={styles.pcRepartidorTag}>
+                  <Text style={styles.pcRepartidorTagText}>{p.repartidorNombre}</Text>
+                </View>
+                <Text style={styles.title}>{p.calleMostrada}</Text>
+                <Text style={styles.row}>
+                  {new Date(p.creadoEn).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  {' · '}
+                  <Text style={esRetirado ? styles.estadoOk : esCancelado ? styles.estadoMal : styles.estadoNeutro}>
+                    {esRetirado ? 'Retirado' : esCancelado ? 'Cancelado' : esPendiente ? p.estado : p.estado}
+                  </Text>
+                  {' · Total $'}{Number(p.total ?? 0).toFixed(2)}
+                </Text>
+                {p.items.map((it, idx) => (
+                  <Text key={`${p.id}-${idx}`} style={styles.row}>
+                    · {it.cantidad} x {it.descripcion} · ${Number(it.subtotal ?? 0).toFixed(2)}
+                  </Text>
+                ))}
+                {p.notas ? <Text style={styles.row}>Nota: {p.notas}</Text> : null}
               </View>
-              <Text style={styles.title}>{p.calleMostrada}</Text>
-              <Text style={styles.row}>
-                {new Date(p.creadoEn).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                {' · '}
-                <Text style={p.estado === 'retirado' ? styles.estadoOk : styles.estadoMal}>
-                  {p.estado === 'retirado' ? 'Retirado' : 'Cancelado'}
-                </Text>
-                {' · Total $'}{Number(p.total ?? 0).toFixed(2)}
-              </Text>
-              {p.items.map((it, idx) => (
-                <Text key={`${p.id}-${idx}`} style={styles.row}>
-                  · {it.cantidad} x {it.descripcion} · ${Number(it.subtotal ?? 0).toFixed(2)}
-                </Text>
-              ))}
-              {p.notas ? <Text style={styles.row}>Nota: {p.notas}</Text> : null}
-            </View>
-          ))
+            );
+          })
         )}
       </View>
 

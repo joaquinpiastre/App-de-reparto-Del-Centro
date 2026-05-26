@@ -10,9 +10,10 @@ interface Props extends PropsWithChildren {
   title: string;
   subtitle?: string;
   showBack?: boolean;
+  scrollable?: boolean;
 }
 
-export function Screen({ title, subtitle, showBack, children }: Props) {
+export function Screen({ title, subtitle, showBack, scrollable, children }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
@@ -73,6 +74,17 @@ export function Screen({ title, subtitle, showBack, children }: Props) {
             {spaced}
           </View>
         </ScrollView>
+      ) : scrollable ? (
+        <ScrollView
+          style={styles.bodyScrollNative}
+          contentContainerStyle={[
+            styles.bodyScrollNativeContent,
+            { paddingHorizontal: bodyHorizontal, paddingVertical: isCompact ? 12 : 16 },
+          ]}
+          keyboardShouldPersistTaps="handled"
+        >
+          {spaced}
+        </ScrollView>
       ) : (
         <View style={[styles.body, { paddingHorizontal: bodyHorizontal, paddingVertical: isCompact ? 12 : 16 }]}>
           {spaced}
@@ -102,5 +114,7 @@ const styles = StyleSheet.create({
   },
   bodyScrollWeb: { flex: 1, width: '100%' },
   bodyScrollWebContent: { flexGrow: 1, paddingBottom: 24 },
+  bodyScrollNative: { flex: 1 },
+  bodyScrollNativeContent: { flexGrow: 1, paddingBottom: 32 },
   childSpacing: { marginTop: 12 },
 });

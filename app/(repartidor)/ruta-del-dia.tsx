@@ -82,6 +82,7 @@ export default function RutaDelDia() {
       title="Mi recorrido de hoy"
       subtitle={`${clientesDelDia.length - pendientes} / ${clientesDelDia.length} visitados`}
       showBack
+      scrollable
     >
       <RutaTrazada clientes={clientesDelDia} destacarClienteId={actual?.id} />
 

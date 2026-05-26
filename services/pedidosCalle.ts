@@ -42,6 +42,15 @@ export async function obtenerPedidosCalleFinalizados(): Promise<PedidoCalle[]> {
   return data.pedidos.filter((p) => p.estado === 'retirado' || p.estado === 'cancelado');
 }
 
+// Para admin: devuelve todos los pedidos de calle sin importar el estado
+export async function obtenerTodosLosPedidosCalle(): Promise<PedidoCalle[]> {
+  if (!API_ENABLED) {
+    return usePedidosCalleStore.getState().pedidos;
+  }
+  const data = await apiRequest<{ pedidos: PedidoCalle[] }>('/pedidos-calle');
+  return data.pedidos;
+}
+
 export async function cerrarTurnoPedidosCalle(jornadaId: string, repartidorId: string): Promise<void> {
   if (!API_ENABLED) return;
   await apiRequest('/pedidos-calle/cerrar-turno', {

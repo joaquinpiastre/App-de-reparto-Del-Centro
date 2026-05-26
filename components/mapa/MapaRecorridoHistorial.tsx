@@ -2,12 +2,28 @@ import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 
 import { COLORS } from '@/constants/colors';
-import { REGION_SAN_RAFAEL } from '@/constants/mapRegion';
 import type { RecorridoPoint, RecorridoStop } from '@/services/adminReportes';
 
 interface Props {
   points: RecorridoPoint[];
   stops: RecorridoStop[];
+}
+
+function calcularRegion(points: RecorridoPoint[]) {
+  const lats = points.map((p) => p.lat);
+  const lngs = points.map((p) => p.lng);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
+  const latDelta = Math.max((maxLat - minLat) * 1.4, 0.01);
+  const lngDelta = Math.max((maxLng - minLng) * 1.4, 0.01);
+  return {
+    latitude: (minLat + maxLat) / 2,
+    longitude: (minLng + maxLng) / 2,
+    latitudeDelta: latDelta,
+    longitudeDelta: lngDelta,
+  };
 }
 
 export function MapaRecorridoHistorial({ points, stops }: Props) {
@@ -21,8 +37,15 @@ export function MapaRecorridoHistorial({ points, stops }: Props) {
   const coords = points.map((p) => ({ latitude: p.lat, longitude: p.lng }));
   const start = points[0];
   const end = points[points.length - 1];
+  const region = calcularRegion(points);
   return (
-    <MapView provider={PROVIDER_GOOGLE} style={styles.map} initialRegion={REGION_SAN_RAFAEL}>
+    <MapView
+      provider={PROVIDER_GOOGLE}
+      style={styles.map}
+      initialRegion={region}
+      scrollEnabled={false}
+      zoomEnabled={true}
+    >
       <Polyline coordinates={coords} strokeColor={COLORS.acentoAzul} strokeWidth={4} />
       <Marker coordinate={{ latitude: start.lat, longitude: start.lng }} title="Inicio" pinColor="#22c55e" />
       <Marker coordinate={{ latitude: end.lat, longitude: end.lng }} title="Fin" pinColor="#ef4444" />

@@ -87,10 +87,11 @@ gpsRouter.post('/gps/update', requireMobileKeyOrAuth, async (req, res) => {
   const p = parsed.data;
   const nombre = p.nombre ?? p.repartidorId.replace(/^usr-/, 'Repartidor ');
 
+  // Solo crear si no existe; si ya existe, solo actualizar activo=true para no pisar el nombre del admin
   await pool.query(
     `insert into repartidores (id, nombre, rol, activo)
      values ($1, $2, 'repartidor', true)
-     on conflict (id) do update set nombre = excluded.nombre, activo = true`,
+     on conflict (id) do update set activo = true`,
     [p.repartidorId, nombre]
   );
 

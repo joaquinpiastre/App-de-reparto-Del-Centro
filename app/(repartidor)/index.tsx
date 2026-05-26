@@ -11,7 +11,7 @@ import { setAuthToken } from '@/services/apiClient';
 import { obtenerAsignaciones } from '@/services/asignaciones';
 import { useAppStore } from '@/store/useAppStore';
 
-const TEL_LOCAL = '2604500000';
+const TEL_EMERGENCIA = '2604638122';
 
 export default function HomeRepartidor() {
   const {
@@ -85,7 +85,7 @@ export default function HomeRepartidor() {
   };
 
   return (
-    <Screen title={`Hola, ${nombre}`} subtitle="Del Centro Pinturerias · Reparto">
+    <Screen title={`Hola, ${nombre}`} subtitle="Del Centro Pinturerias · Reparto" scrollable>
 
       {/* Tarjeta de estado del turno */}
       <View style={[styles.statusCard, jornadaActiva ? styles.statusActivo : styles.statusPausado]}>
@@ -189,13 +189,13 @@ export default function HomeRepartidor() {
 
         <Pressable
           style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
-          onPress={() => Linking.openURL(`tel:${TEL_LOCAL}`)}
+          onPress={() => Linking.openURL(`tel:${TEL_EMERGENCIA}`)}
         >
-          <View style={[styles.actionIcon, { backgroundColor: '#e8f4fd' }]}>
-            <MaterialIcons name="call" size={26} color={COLORS.acentoAzul} />
+          <View style={[styles.actionIcon, { backgroundColor: '#fff0f0' }]}>
+            <MaterialIcons name="phone" size={26} color="#e53935" />
           </View>
-          <Text style={styles.actionLabel}>Llamar al local</Text>
-          <Text style={styles.actionSub}>{TEL_LOCAL}</Text>
+          <Text style={styles.actionLabel}>Emergencias</Text>
+          <Text style={styles.actionSub}>{TEL_EMERGENCIA}</Text>
         </Pressable>
       </View>
 
