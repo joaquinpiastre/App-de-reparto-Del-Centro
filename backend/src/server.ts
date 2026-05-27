@@ -13,6 +13,7 @@ import { gpsRouter } from './routes/gps.js';
 import { healthRouter } from './routes/health.js';
 import { pedidosCalleRouter } from './routes/pedidosCalle.js';
 import { rutasFijasRouter } from './routes/rutasFijas.js';
+import { iniciarSchedulerRutasFijas } from './cron/rutasFijasScheduler.js';
 
 const app = express();
 
@@ -47,6 +48,8 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 
 const server = app.listen(config.port, () => {
   console.log(`API Del Centro listening on :${config.port}`);
+  // Inicia el scheduler que aplica rutas fijas automáticamente a las 00:00 Argentina
+  iniciarSchedulerRutasFijas();
 });
 
 process.on('SIGINT', async () => {

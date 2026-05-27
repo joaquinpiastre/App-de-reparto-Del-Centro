@@ -29,6 +29,7 @@ import {
   obtenerRutaFija,
   guardarRutaFija,
   generarAsignacionesDesdeRutaFija,
+  aplicarTodasLasRutasFijasManual,
   type ClienteRutaFija,
 } from '@/services/rutasFijas';
 import type { Asignacion, ClienteCatalogo, Usuario } from '@/types';
@@ -90,6 +91,7 @@ export default function Asignaciones() {
   const [busqueda, setBusqueda] = useState('');
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [guardando, setGuardando] = useState(false);
+  const [aplicandoTodas, setAplicandoTodas] = useState(false);
 
   // Ruta fija
   const [rutaFija, setRutaFija] = useState<ClienteRutaFija[]>([]);
@@ -253,6 +255,38 @@ export default function Asignaciones() {
     }
   };
 
+  /** Aplica las rutas fijas de TODOS los repartidores para hoy (mismo efecto que el cron de medianoche). */
+  const aplicarTodasHoy = async () => {
+    Alert.alert(
+      '¿Aplicar rutas de hoy?',
+      `Esto genera las asignaciones de HOY (${fecha}) para todos los repartidores con ruta fija configurada. Las que ya existen no se duplican.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Aplicar',
+          style: 'default',
+          onPress: async () => {
+            setAplicandoTodas(true);
+            try {
+              const res = await aplicarTodasLasRutasFijasManual(fecha);
+              await cargarAsignaciones();
+              Alert.alert(
+                '✅ Rutas aplicadas',
+                res.totalGenerados === 0
+                  ? 'Todas las rutas fijas ya estaban aplicadas para hoy.'
+                  : `${res.totalGenerados} asignación(es) generadas para ${res.repartidores} repartidor(es).`,
+              );
+            } catch (e) {
+              Alert.alert('Error', e instanceof Error ? e.message : 'No se pudieron aplicar las rutas.');
+            } finally {
+              setAplicandoTodas(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const cargarRepartidores = useCallback(async () => {
     try {
       const lista = await obtenerRepartidoresDisponibles();
@@ -412,6 +446,25 @@ export default function Asignaciones() {
           </View>
         </View>
       ) : null}
+
+      {/* Botón global: aplicar rutas fijas de TODOS los repartidores para hoy */}
+      <View style={styles.aplicarTodasCard}>
+        <View style={styles.aplicarTodasInfo}>
+          <MaterialIcons name="update" size={20} color={COLORS.verdeOscuro} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.aplicarTodasTit}>Aplicar rutas fijas de hoy</Text>
+            <Text style={styles.aplicarTodasSub}>
+              El servidor lo hace automáticamente a las 00:00. Tocá si necesitás forzarlo ahora.
+            </Text>
+          </View>
+        </View>
+        <Button
+          label={aplicandoTodas ? 'Aplicando…' : '⚡ Aplicar a todos'}
+          variant="primary"
+          loading={aplicandoTodas}
+          onPress={() => void aplicarTodasHoy()}
+        />
+      </View>
 
       {/* Lista de asignaciones con drag-and-drop */}
       <View style={styles.section}>
@@ -923,6 +976,33 @@ const styles = StyleSheet.create({
   catalogoDir: { fontFamily: 'Poppins_400Regular', fontSize: 12, color: COLORS.grisSecundario },
   yaAsignadoText: { fontFamily: 'Poppins_600SemiBold', fontSize: 11, color: COLORS.grisSecundario },
   modalFooter: { padding: 16, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e8ecef' },
+
+  // Card global "aplicar rutas de hoy"
+  aplicarTodasCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#b7e0a0',
+    gap: 10,
+  },
+  aplicarTodasInfo: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  aplicarTodasTit: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 14,
+    color: COLORS.verdeOscuro,
+  },
+  aplicarTodasSub: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 12,
+    color: COLORS.grisSecundario,
+    lineHeight: 18,
+    marginTop: 2,
+  },
 
   // Ruta fija
   rutaFijaCard: {

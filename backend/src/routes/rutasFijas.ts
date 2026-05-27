@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../auth.js';
 import { pool } from '../db/client.js';
+import { aplicarTodasLasRutasFijas, fechaHoyArgentina } from '../cron/rutasFijasScheduler.js';
 
 type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' } };
 
@@ -139,4 +140,34 @@ rutasFijasRouter.post('/rutas-fijas/:repartidorId/generar', requireAuth, async (
   }
 
   res.json({ generados, omitidos });
+});
+
+// POST /rutas-fijas/aplicar-todas?fecha=YYYY-MM-DD
+// Admin: aplica la ruta fija de TODOS los repartidores activos para la fecha indicada
+// (o para hoy Argentina si no se indica fecha). Idempotente.
+rutasFijasRouter.post('/rutas-fijas/aplicar-todas', requireAuth, async (req, res) => {
+  const user = (req as unknown as ReqWithUser).user!;
+  if (user.rol !== 'admin') {
+    res.status(403).json({ error: 'Solo admin puede aplicar todas las rutas fijas.' });
+    return;
+  }
+
+  const fecha = (req.query.fecha as string | undefined) ?? fechaHoyArgentina();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    res.status(400).json({ error: 'Fecha inválida. Formato: YYYY-MM-DD.' });
+    return;
+  }
+
+  const resumen = await aplicarTodasLasRutasFijas(fecha);
+  const totalGenerados = resumen.reduce((s, r) => s + r.generados, 0);
+  const totalOmitidos = resumen.reduce((s, r) => s + r.omitidos, 0);
+
+  res.json({
+    ok: true,
+    fecha,
+    repartidores: resumen.length,
+    totalGenerados,
+    totalOmitidos,
+    detalle: resumen,
+  });
 });

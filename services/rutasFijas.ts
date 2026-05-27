@@ -33,3 +33,26 @@ export async function generarAsignacionesDesdeRutaFija(
     { method: 'POST' }
   );
 }
+
+export interface ResumenAplicarTodas {
+  ok: boolean;
+  fecha: string;
+  repartidores: number;
+  totalGenerados: number;
+  totalOmitidos: number;
+  detalle: { repartidor: string; generados: number; omitidos: number }[];
+}
+
+/**
+ * Aplica la ruta fija de TODOS los repartidores para la fecha indicada (o hoy si no se pasa).
+ * Solo para admin.
+ */
+export async function aplicarTodasLasRutasFijasManual(
+  fecha?: string
+): Promise<ResumenAplicarTodas> {
+  if (!API_ENABLED) {
+    return { ok: true, fecha: fecha ?? '', repartidores: 0, totalGenerados: 0, totalOmitidos: 0, detalle: [] };
+  }
+  const url = fecha ? `/rutas-fijas/aplicar-todas?fecha=${fecha}` : '/rutas-fijas/aplicar-todas';
+  return apiRequest<ResumenAplicarTodas>(url, { method: 'POST' });
+}
