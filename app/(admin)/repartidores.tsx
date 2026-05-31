@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
@@ -151,7 +151,7 @@ export default function RepartidoresAdminScreen() {
   };
 
   return (
-    <Screen title="Repartidores" subtitle="Alta, edición y estado de los repartidores de la tienda">
+    <Screen title="Repartidores" subtitle="Alta, edición y estado de los repartidores de la tienda" scrollable>
       {error ? (
         <View style={[styles.feedback, styles.feedbackError]}>
           <Text style={styles.feedbackText}>{error}</Text>
@@ -217,17 +217,13 @@ export default function RepartidoresAdminScreen() {
             onPress={() => void cargar()}
           />
         </View>
-        <FlatList
-          data={repartidores}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingBottom: 20 }}
-          ListEmptyComponent={
-            <Text style={styles.empty}>
-              {loading ? 'Cargando repartidores…' : 'No hay repartidores cargados.'}
-            </Text>
-          }
-          renderItem={({ item }) => (
-            <View style={styles.rowCard}>
+        {repartidores.length === 0 ? (
+          <Text style={styles.empty}>
+            {loading ? 'Cargando repartidores…' : 'No hay repartidores cargados.'}
+          </Text>
+        ) : (
+          repartidores.map((item) => (
+            <View key={item.id} style={styles.rowCard}>
               <Text style={styles.nombre}>{item.nombre}</Text>
               <Text style={styles.detalle}>Usuario: {usuarioDesdeId(item.id)}</Text>
               <Text style={styles.detalle}>Estado: {item.activo ? 'Activo' : 'Inactivo'}</Text>
@@ -254,8 +250,8 @@ export default function RepartidoresAdminScreen() {
                 />
               </View>
             </View>
-          )}
-        />
+          ))
+        )}
       </View>
     </Screen>
   );

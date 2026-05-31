@@ -215,7 +215,7 @@ export default function Asignaciones() {
         console.warn('obtenerClientesCatalogo:', e);
       }
     }
-    setSeleccionadosRutaFija(new Set(rutaFija.map((c) => c.clienteId)));
+    setSeleccionadosRutaFija(new Set(rutaFija.map((c) => c.id)));
     setModalRutaFijaVisible(true);
   };
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Dimensions, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, StyleSheet, Text, View } from 'react-native';
 import { BarChart } from 'react-native-chart-kit';
 
 import { Button } from '@/components/ui/Button';
@@ -41,8 +41,7 @@ export default function Estadisticas() {
   }, [stats]);
 
   return (
-    <Screen title="Estadísticas" subtitle="Métricas reales desde backend">
-      <ScrollView>
+    <Screen title="Estadísticas" subtitle="Métricas reales desde backend" scrollable>
         <View style={styles.topRow}>
           <Button
             label={loading ? 'ACTUALIZANDO…' : 'ACTUALIZAR'}
@@ -129,7 +128,6 @@ export default function Estadisticas() {
             </View>
           </>
         )}
-      </ScrollView>
     </Screen>
   );
 }

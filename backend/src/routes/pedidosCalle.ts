@@ -30,6 +30,7 @@ const pedidoSchema = z.object({
 
 const estadoSchema = z.object({
   estado: z.enum(['pendiente', 'visto', 'armado', 'retirado', 'cancelado']),
+  nota: z.string().optional(),
 });
 
 const cerrarTurnoSchema = z.object({
@@ -156,6 +157,7 @@ pedidosCalleRouter.post('/pedidos-calle/cerrar-turno', requireAuth, async (req, 
     return;
   }
   const { jornadaId, repartidorId } = parsed.data;
+  // Asociar pedidos de calle
   await pool.query(
     `update pedidos_calle
      set jornada_id = $1
@@ -163,6 +165,15 @@ pedidosCalleRouter.post('/pedidos-calle/cerrar-turno', requireAuth, async (req, 
        and jornada_id is null`,
     [jornadaId, repartidorId]
   );
+  // Asociar pedidos admin entregados/en_ruta del repartidor sin jornada asignada
+  await pool.query(
+    `update pedidos_admin
+     set jornada_id = $1
+     where repartidor_id = $2
+       and jornada_id is null
+       and estado in ('entregado', 'en_ruta', 'asignado', 'cancelado')`,
+    [jornadaId, repartidorId]
+  ).catch(() => {}); // tabla puede no tener columna jornada_id aún; ensureColumns la agrega
   res.json({ ok: true });
 });
 
@@ -172,6 +183,14 @@ pedidosCalleRouter.patch('/pedidos-calle/:id/estado', requireAuth, async (req, r
     res.status(400).json({ error: 'Payload inválido.' });
     return;
   }
-  await pool.query(`update pedidos_calle set estado = $2 where id = $1`, [req.params.id, parsed.data.estado]);
+  const { estado, nota } = parsed.data;
+  if (nota !== undefined) {
+    await pool.query(
+      `update pedidos_calle set estado = $2, notas = coalesce(notas || ' | ' || $3, $3) where id = $1`,
+      [req.params.id, estado, nota]
+    );
+  } else {
+    await pool.query(`update pedidos_calle set estado = $2 where id = $1`, [req.params.id, estado]);
+  }
   res.json({ ok: true });
 });

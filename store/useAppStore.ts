@@ -76,7 +76,7 @@ interface AppStore {
   irAlPrimerPendiente: () => void;
   actualizarCliente: (id: string, patch: Partial<Cliente>) => void;
   marcarClienteEstado: (id: string, estado: EstadoEntrega) => void;
-  completarVisitaActual: (opts?: { notasRepartidor?: string }) => void;
+  completarVisitaActual: (opts?: { notasRepartidor?: string; firmaBase64?: string }) => void;
   reportarProblemaActual: (nota?: string) => void;
 }
 
@@ -156,34 +156,32 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   cerrarJornada: async () => {
     const { usuario, clientesDelDia, jornadaInicioEpoch, jornadaActiva, jornadaId } = get();
-    if (jornadaActiva && jornadaInicioEpoch) {
+
+    // Calcular stats antes de resetear el estado
+    let payload: Parameters<typeof registrarCierreJornadaApi>[0] | null = null;
+    if (jornadaActiva && jornadaInicioEpoch && jornadaId && usuario?.id) {
       const completados = clientesDelDia.filter((c) => c.estado === 'entregado').length;
       const minutos = Math.max(1, Math.round((Date.now() - jornadaInicioEpoch) / 60000));
       const fechaIso = new Date().toISOString();
       useHistorialStore.getState().registrarCierre({
         fechaIso,
-        repartidorNombre: usuario?.nombre ?? 'Repartidor',
+        repartidorNombre: usuario.nombre,
         completados,
         total: clientesDelDia.length,
         minutosEnRuta: minutos,
       });
-      if (jornadaId && usuario?.id) {
-        void registrarCierreJornadaApi({
-          jornadaId,
-          repartidorId: usuario.id,
-          repartidorNombre: usuario.nombre,
-          completados,
-          total: clientesDelDia.length,
-          minutosEnRuta: minutos,
-          fechaIso,
-        }).catch((err) => {
-          const msg = err instanceof Error ? err.message : 'No se pudo enviar el cierre al backend.';
-          Alert.alert('Cierre no sincronizado', msg);
-        });
-        // Mover los pedidos en la calle al historial de esta jornada
-        void cerrarTurnoPedidosCalle(jornadaId, usuario.id).catch(() => {});
-      }
+      payload = {
+        jornadaId,
+        repartidorId: usuario.id,
+        repartidorNombre: usuario.nombre,
+        completados,
+        total: clientesDelDia.length,
+        minutosEnRuta: minutos,
+        fechaIso,
+      };
     }
+
+    // Resetear estado inmediatamente para buena UX (pantalla vuelve a inicio rápido)
     set({
       jornadaActiva: false,
       gpsActivo: false,
@@ -196,6 +194,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
     });
     // Revertir a presencia: el admin sigue viendo al repartidor aunque terminó el turno
     await detenerGPS(true).catch((err) => console.warn('detenerGPS:', err));
+
+    // Sincronizar con backend en segundo plano
+    if (payload) {
+      try {
+        await registrarCierreJornadaApi(payload);
+        await cerrarTurnoPedidosCalle(payload.jornadaId, payload.repartidorId).catch(() => {});
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'No se pudo enviar el cierre al backend.';
+        Alert.alert('Cierre no sincronizado', `${msg}\n\nEl turno se cerró en el dispositivo.`);
+      }
+    }
   },
 
   resetSesion: () => {
@@ -256,6 +265,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       fotoEntregaUri: fotoPendienteUri ?? c.fotoEntregaUri,
       tiempoParadaSegundos: entregaTimerSegundos,
       notasRepartidor: opts?.notasRepartidor,
+      firmaBase64: opts?.firmaBase64,
     });
     void actualizarEstadoAsignacion(c.id, 'entregado', {
       notasRepartidor: opts?.notasRepartidor,

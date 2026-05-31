@@ -82,7 +82,7 @@ export function MapaRealtime({ posicion, tituloMarcador = 'Dispositivo', telefon
       {React.createElement('iframe', {
         title: 'Mapa telefonos en reparto',
         srcDoc,
-        style: styles.mapFrame as unknown as React.CSSProperties,
+        style: { ...styles.mapFrame, display: 'block' } as unknown as React.CSSProperties,
       })}
       {!telefonos.length && !posicion ? (
         <Text style={styles.footerHint}>
@@ -101,7 +101,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 420,
     minHeight: 380,
-    display: 'block' as const,
     backgroundColor: '#e8eef0',
   },
   footerHint: {

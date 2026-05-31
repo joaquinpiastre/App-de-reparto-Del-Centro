@@ -31,7 +31,6 @@ authRouter.post('/auth/login', async (req, res) => {
 
   const cleaned = usuario.toLowerCase();
   const id = cleaned.startsWith('usr-') ? cleaned : `usr-${cleaned}`;
-  const nombreDefault = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 
   const existente = await pool.query(
     `select id, nombre, rol, activo, pin
@@ -63,18 +62,9 @@ authRouter.post('/auth/login', async (req, res) => {
       return;
     }
   } else {
-    if (pin !== DEMO_PIN) {
-      res.status(401).json({ error: 'PIN inválido.' });
-      return;
-    }
-    rol = cleaned.includes('admin') ? 'admin' : 'repartidor';
-    nombre = nombreDefault;
-    await pool.query(
-      `insert into repartidores (id, nombre, rol, activo, pin)
-       values ($1, $2, $3, true, $4)
-       on conflict (id) do update set nombre = excluded.nombre, rol = excluded.rol, activo = true`,
-      [id, nombre, rol, DEMO_PIN]
-    );
+    // Usuario no encontrado en la base de datos. No se auto-crean usuarios: el admin debe crearlos.
+    res.status(401).json({ error: 'Usuario no encontrado. Pedile al administrador que te cree un acceso.' });
+    return;
   }
 
   const token = signToken({ sub: id, nombre, rol });

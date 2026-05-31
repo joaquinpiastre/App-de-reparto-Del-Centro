@@ -35,7 +35,7 @@ function detectStops(
   const stops: Array<{ lat: number; lng: number; inicio: number; fin: number; duracionSegundos: number }> = [];
   if (points.length < 2) return stops;
   const maxDriftMeters = 35;
-  const minStopMs = 2 * 60 * 1000;
+  const minStopMs = 60 * 1000; // 1 minuto mínimo para detectar parada
   let start = 0;
   for (let i = 1; i < points.length; i += 1) {
     const prev = points[i - 1];

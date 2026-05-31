@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Print from 'expo-print';
 
 import { Button } from '@/components/ui/Button';
@@ -158,10 +158,12 @@ export default function PedidosCalleAdmin() {
   );
 
   const esEstadoFinal = (e: EstadoPedidoCalle) => e === 'retirado' || e === 'cancelado';
+  const [notaTexto, setNotaTexto] = useState('');
+  const [pedidoNotaId, setPedidoNotaId] = useState<string | null>(null);
 
-  const cambiarEstado = async (pedido: PedidoCalle, estado: PedidoCalle['estado']) => {
+  const cambiarEstado = async (pedido: PedidoCalle, estado: PedidoCalle['estado'], nota?: string) => {
     try {
-      await actualizarEstadoPedidoCalle(pedido.id, estado);
+      await actualizarEstadoPedidoCalle(pedido.id, estado, nota);
     } catch (e) {
       if (Platform.OS === 'web') {
         globalThis.alert?.(
@@ -171,6 +173,22 @@ export default function PedidosCalleAdmin() {
         Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo actualizar el estado.');
       }
     }
+  };
+
+  const abrirDialogoNota = (pedido: PedidoCalle) => {
+    if (Platform.OS === 'web') {
+      const nota = globalThis.prompt?.('Ingresá una nota para este pedido (opcional):') ?? '';
+      void cambiarEstado(pedido, 'visto', nota || undefined);
+      return;
+    }
+    setPedidoNotaId(pedido.id);
+    setNotaTexto('');
+  };
+
+  const confirmarNota = (pedido: PedidoCalle) => {
+    setPedidoNotaId(null);
+    void cambiarEstado(pedido, 'visto', notaTexto.trim() || undefined);
+    setNotaTexto('');
   };
 
   return (
@@ -259,13 +277,34 @@ export default function PedidosCalleAdmin() {
               <Text style={styles.imprimirBtnTxt}>🖨️  IMPRIMIR PEDIDO</Text>
             </Pressable>
 
+            {/* Diálogo de nota (solo en la card seleccionada) */}
+            {pedidoNotaId === p.id ? (
+              <View style={styles.notaDialog}>
+                <Text style={styles.notaDialogLabel}>Nota del pedido (opcional)</Text>
+                <TextInput
+                  style={styles.notaDialogInput}
+                  placeholder="Ej: pendiente de confirmación, llamar al cliente..."
+                  placeholderTextColor="#aaa"
+                  value={notaTexto}
+                  onChangeText={setNotaTexto}
+                  multiline
+                  maxLength={300}
+                  autoFocus
+                />
+                <View style={styles.actions}>
+                  <Button label="CONFIRMAR" onPress={() => confirmarNota(p)} />
+                  <Button label="CANCELAR" variant="secondary" onPress={() => setPedidoNotaId(null)} />
+                </View>
+              </View>
+            ) : null}
+
             {/* Acciones de estado */}
             {!esEstadoFinal(p.estado) ? (
               <View style={[styles.actions, styles.actionsWrap]}>
                 <Button
-                  label="VISTO"
+                  label="NOTA DEL PEDIDO"
                   variant="secondary"
-                  onPress={() => void cambiarEstado(p, 'visto')}
+                  onPress={() => abrirDialogoNota(p)}
                 />
                 <Button
                   label="ARMADO"
@@ -432,6 +471,28 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_400Regular',
     fontSize: 13,
     color: COLORS.grisSecundario,
+  },
+
+  // Diálogo de nota
+  notaDialog: {
+    backgroundColor: '#f0f7ff',
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#c0d8f5',
+  },
+  notaDialogLabel: { fontFamily: 'Poppins_600SemiBold', fontSize: 13, color: COLORS.grisTexto },
+  notaDialogInput: {
+    borderWidth: 1,
+    borderColor: '#c0d8f5',
+    borderRadius: 10,
+    padding: 10,
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    minHeight: 64,
+    textAlignVertical: 'top',
+    backgroundColor: '#fff',
   },
 
   // Acciones

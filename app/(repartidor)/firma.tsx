@@ -16,10 +16,10 @@ body,html { width: 100%; height: 100%; }
 
 export default function Firma() {
   const ref = useRef<SignatureViewRef>(null);
-  const completarEntregaActual = useAppStore((s) => s.completarEntregaActual);
+  const completarVisitaActual = useAppStore((s) => s.completarVisitaActual);
 
   const onFirma = (sig: string) => {
-    completarEntregaActual({ firmaBase64: sig });
+    completarVisitaActual({ firmaBase64: sig });
     router.replace('/(repartidor)/ruta-del-dia');
   };
 

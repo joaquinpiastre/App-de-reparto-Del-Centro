@@ -23,12 +23,16 @@ export async function publicarPedidoCalle(
   return pedido;
 }
 
-export async function actualizarEstadoPedidoCalle(id: string, estado: EstadoPedidoCalle): Promise<void> {
+export async function actualizarEstadoPedidoCalle(
+  id: string,
+  estado: EstadoPedidoCalle,
+  nota?: string
+): Promise<void> {
   usePedidosCalleStore.getState().marcarEstado(id, estado);
   if (!API_ENABLED) return;
   await apiRequest(`/pedidos-calle/${id}/estado`, {
     method: 'PATCH',
-    body: JSON.stringify({ estado }),
+    body: JSON.stringify({ estado, nota }),
   });
 }
 

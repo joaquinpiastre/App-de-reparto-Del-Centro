@@ -185,16 +185,9 @@ entregasRouter.get('/admin-reportes/historial/:jornadaId/pedidos', requireAuth, 
   }
 
   await ensureCierresTable();
-  const cierreRes = await pool.query<{ jornada_id: string }>(
-    `select jornada_id from cierres_jornada where jornada_id = $1 limit 1`,
-    [jornadaId]
-  );
-  if ((cierreRes.rowCount ?? 0) === 0) {
-    res.json({ pedidos: [] });
-    return;
-  }
 
-  const { rows } = await pool.query(
+  // Obtener pedidos_calle asociados a esta jornada
+  const { rows: rowsCalle } = await pool.query(
     `select p.id,
             p.calle_mostrada as titulo,
             p.repartidor_id as "repartidorId",
@@ -205,6 +198,7 @@ entregasRouter.get('/admin-reportes/historial/:jornadaId/pedidos', requireAuth, 
             p.creado_en_ms as "creadoEn",
             p.cliente_id as "clienteId",
             p.cliente_nombre as "clienteNombre",
+            'pedido_calle' as origen,
             coalesce(
               json_agg(
                 json_build_object(
@@ -224,8 +218,50 @@ entregasRouter.get('/admin-reportes/historial/:jornadaId/pedidos', requireAuth, 
     [jornadaId]
   );
 
+  // Obtener pedidos_admin asociados a esta jornada (si la columna existe)
+  let rowsAdmin: typeof rowsCalle = [];
+  try {
+    const res2 = await pool.query(
+      `select p.id,
+              p.titulo,
+              p.repartidor_id as "repartidorId",
+              p.repartidor_nombre as "repartidorNombre",
+              p.total,
+              p.notas,
+              p.estado,
+              p.creado_en_ms as "creadoEn",
+              null as "clienteId",
+              null as "clienteNombre",
+              'pedido_admin' as origen,
+              coalesce(
+                json_agg(
+                  json_build_object(
+                    'descripcion', i.descripcion,
+                    'cantidad', i.cantidad,
+                    'precioUnitario', i.precio_unitario,
+                    'subtotal', i.subtotal
+                  )
+                ) filter (where i.id is not null),
+                '[]'::json
+              ) as items
+       from pedidos_admin p
+       left join pedidos_admin_items i on i.pedido_id = p.id
+       where p.jornada_id = $1
+       group by p.id
+       order by p.creado_en_ms asc`,
+      [jornadaId]
+    );
+    rowsAdmin = res2.rows;
+  } catch {
+    // columna jornada_id puede no existir en instancias antiguas
+  }
+
+  const todos = [...rowsCalle, ...rowsAdmin].sort(
+    (a, b) => Number(a.creadoEn ?? 0) - Number(b.creadoEn ?? 0)
+  );
+
   res.json({
-    pedidos: rows.map((r) => ({ ...r, total: Number(r.total ?? 0) })),
+    pedidos: todos.map((r) => ({ ...r, total: Number(r.total ?? 0) })),
   });
 });
 

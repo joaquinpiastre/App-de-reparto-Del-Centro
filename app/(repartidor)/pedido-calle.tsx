@@ -3,7 +3,6 @@ import {
   Alert,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -205,23 +204,14 @@ export default function PedidoCalleScreen() {
     }
   };
 
-  const FormBody = Platform.OS === 'web' ? View : ScrollView;
-  const formScrollProps =
-    Platform.OS === 'web'
-      ? {}
-      : ({
-          keyboardShouldPersistTaps: 'handled',
-          showsVerticalScrollIndicator: true,
-          contentContainerStyle: styles.scrollContent,
-        } as const);
-
   return (
     <Screen
       title="Pedido en la calle"
       subtitle="Buscá productos del catálogo o cargá manualmente"
       showBack
+      scrollable
     >
-      <FormBody {...formScrollProps}>
+      <View>
         <Text style={styles.help}>
           Buscá el producto por nombre y el precio se completa solo desde el catálogo. Si no lo encontrás, escribilo manualmente.
         </Text>
@@ -429,7 +419,7 @@ export default function PedidoCalleScreen() {
             </View>
           ))
         )}
-      </FormBody>
+      </View>
     </Screen>
   );
 }

@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
-import { FlatList, Linking, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Linking, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { RutaTrazada } from '@/components/mapa/RutaTrazada';
@@ -72,16 +73,26 @@ export default function RutaDelDia() {
     );
   }
 
+  const [busqueda, setBusqueda] = useState('');
   const actual = clientesDelDia[clienteActualIndex];
   const pendientes = clientesDelDia.filter(
     (c) => c.estado === 'pendiente' || c.estado === 'en_camino'
   ).length;
+
+  const clientesFiltrados = busqueda.trim()
+    ? clientesDelDia.filter(
+        (c) =>
+          c.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+          c.direccion.toLowerCase().includes(busqueda.toLowerCase())
+      )
+    : clientesDelDia;
 
   return (
     <Screen
       title="Mi recorrido de hoy"
       subtitle={`${clientesDelDia.length - pendientes} / ${clientesDelDia.length} visitados`}
       showBack
+      showHome
       scrollable
     >
       <RutaTrazada clientes={clientesDelDia} destacarClienteId={actual?.id} />
@@ -92,12 +103,24 @@ export default function RutaDelDia() {
         iconLeft={<MaterialIcons name="directions" size={16} color="#fff" />}
       />
 
-      <FlatList
-        data={clientesDelDia}
-        keyExtractor={(item) => item.id}
-        scrollEnabled={false}
-        renderItem={({ item, index }) => (
-          <View style={[styles.card, item.id === actual?.id && styles.cardActual]}>
+      {/* Buscador de clientes */}
+      <View style={styles.searchBox}>
+        <MaterialIcons name="search" size={18} color={COLORS.grisSecundario} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Buscar cliente o dirección…"
+          placeholderTextColor={COLORS.grisSecundario}
+          value={busqueda}
+          onChangeText={setBusqueda}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+      </View>
+
+      {clientesFiltrados.map((item) => {
+        const index = clientesDelDia.indexOf(item);
+        return (
+          <View key={item.id} style={[styles.card, item.id === actual?.id && styles.cardActual]}>
             <View style={styles.cardTop}>
               <View style={styles.cardLeft}>
                 <Text style={styles.num}>{index + 1}</Text>
@@ -132,8 +155,8 @@ export default function RutaDelDia() {
               </View>
             ) : null}
           </View>
-        )}
-      />
+        );
+      })}
     </Screen>
   );
 }
@@ -203,4 +226,21 @@ const styles = StyleSheet.create({
   },
   estadoText: { fontFamily: 'Poppins_700Bold', fontSize: 10 },
   rowBtns: { flexDirection: 'row', gap: 8 },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e6ea',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 14,
+    color: COLORS.grisTexto,
+  },
 });

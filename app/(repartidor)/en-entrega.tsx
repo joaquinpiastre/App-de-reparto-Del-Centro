@@ -46,7 +46,11 @@ export default function EnEntrega() {
   }
 
   const llamar = () => {
-    const tel = cliente.telefono.replace(/\s/g, '');
+    const tel = (cliente.telefono ?? '').replace(/\s/g, '');
+    if (!tel) {
+      Alert.alert('Sin teléfono', 'Este cliente no tiene teléfono registrado.');
+      return;
+    }
     Linking.openURL(`tel:${tel}`);
   };
 
@@ -81,6 +85,8 @@ export default function EnEntrega() {
       title="Visita activa"
       subtitle={`${esTaller ? 'Taller' : 'Cliente'}: ${cliente.nombre}`}
       showBack
+      showHome
+      scrollable
     >
       {/* Datos del cliente */}
       <View style={styles.card}>

@@ -39,20 +39,27 @@ export async function mandarPosicionGPS(
     const token = await AsyncStorage.getItem('auth_token');
     if (token) headers.Authorization = `Bearer ${token}`;
   }
-  await fetch(`${API_URL}/gps/update`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      jornadaId,
-      repartidorId,
-      nombre: repartidorNombre ?? repartidorId,
-      lat,
-      lng,
-      velocidad,
-      precision,
-      timestamp: Date.now(),
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    await fetch(`${API_URL}/gps/update`, {
+      method: 'POST',
+      headers,
+      signal: controller.signal,
+      body: JSON.stringify({
+        jornadaId,
+        repartidorId,
+        nombre: repartidorNombre ?? repartidorId,
+        lat,
+        lng,
+        velocidad,
+        precision,
+        timestamp: Date.now(),
+      }),
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {

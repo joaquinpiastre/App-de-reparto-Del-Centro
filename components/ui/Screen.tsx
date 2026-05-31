@@ -11,9 +11,10 @@ interface Props extends PropsWithChildren {
   subtitle?: string;
   showBack?: boolean;
   scrollable?: boolean;
+  showHome?: boolean;
 }
 
-export function Screen({ title, subtitle, showBack, scrollable, children }: Props) {
+export function Screen({ title, subtitle, showBack, scrollable, showHome, children }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
@@ -47,16 +48,31 @@ export function Screen({ title, subtitle, showBack, scrollable, children }: Prop
           },
         ]}
       >
-        {showBack ? (
-          <Pressable
-            onPress={() => router.back()}
-            style={styles.backBtn}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="Volver"
-          >
-            <MaterialIcons name="arrow-back" size={24} color="#fff" />
-          </Pressable>
+        {(showBack || showHome) ? (
+          <View style={styles.headerTopRow}>
+            {showBack ? (
+              <Pressable
+                onPress={() => router.back()}
+                style={styles.backBtn}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Volver"
+              >
+                <MaterialIcons name="arrow-back" size={24} color="#fff" />
+              </Pressable>
+            ) : <View />}
+            {showHome ? (
+              <Pressable
+                onPress={() => router.replace('/(repartidor)')}
+                style={styles.homeBtn}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Ir al inicio"
+              >
+                <MaterialIcons name="home" size={26} color="#fff" />
+              </Pressable>
+            ) : null}
+          </View>
         ) : null}
         <Text style={[styles.title, { fontSize: isCompact ? 20 : 24 }]}>{title}</Text>
         {subtitle ? <Text style={[styles.subtitle, { fontSize: isCompact ? 12 : 13 }]}>{subtitle}</Text> : null}
@@ -98,10 +114,21 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.grisClaro },
   safeWeb: { flex: 1, minHeight: 0, width: '100%', alignSelf: 'stretch' },
   header: { backgroundColor: COLORS.verdePrincipal },
-  backBtn: {
+  headerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 6,
+    minHeight: 28,
+  },
+  backBtn: {
     alignSelf: 'flex-start',
     padding: 2,
+  },
+  homeBtn: {
+    alignSelf: 'flex-start',
+    padding: 2,
+    marginLeft: 'auto',
   },
   title: { color: '#fff', fontFamily: 'Poppins_800ExtraBold' },
   subtitle: { color: '#edf6e6', fontFamily: 'Poppins_400Regular', marginTop: 2 },
