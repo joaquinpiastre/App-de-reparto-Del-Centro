@@ -186,42 +186,48 @@ entregasRouter.get('/admin-reportes/historial/:jornadaId/pedidos', requireAuth, 
 
   await ensureCierresTable();
 
-  // Obtener info de la jornada para el fallback por fecha
-  const jornadaInfo = await pool.query<{ repartidor_id: string; iniciada_en: Date }>(
-    `select repartidor_id, iniciada_en from jornadas where id = $1`,
+  // Obtener info del cierre para el fallback por fecha+repartidor
+  // Usamos cierres_jornada.created_at como punto de referencia y buscamos 26 horas hacia atrás,
+  // porque jornadas.iniciada_en puede ser NOW() si se insertó sin GPS (y los pedidos son ANTERIORES al cierre).
+  const cierreInfo = await pool.query<{ repartidor_id: string; created_at: Date }>(
+    `select repartidor_id, created_at from cierres_jornada where jornada_id = $1 limit 1`,
     [jornadaId]
-  ).catch(() => ({ rows: [] as Array<{ repartidor_id: string; iniciada_en: Date }> }));
-  const jornada = jornadaInfo.rows[0];
+  ).catch(() => ({ rows: [] as Array<{ repartidor_id: string; created_at: Date }> }));
+  const cierre = cierreInfo.rows[0];
 
-  // Ventana de tiempo de la jornada: desde inicio hasta fin del mismo día
-  const iniciada_ms = jornada ? new Date(jornada.iniciada_en).getTime() : 0;
-  const fin_ms = jornada ? iniciada_ms + 24 * 60 * 60 * 1000 : 0;
+  // Ventana: desde 26 horas antes del cierre hasta 2 horas después (captura turnos nocturnos también)
+  const cierreMs = cierre ? new Date(cierre.created_at).getTime() : 0;
+  const inicioMs = cierreMs - 26 * 60 * 60 * 1000;
+  const finMs    = cierreMs + 2  * 60 * 60 * 1000;
 
-  const pedidosCalleQuery = jornada
-    ? `select p.id,
-              p.calle_mostrada as titulo,
-              p.repartidor_id as "repartidorId",
-              p.repartidor_nombre as "repartidorNombre",
-              p.total,
-              p.notas,
-              p.estado,
-              p.creado_en_ms as "creadoEn",
-              p.cliente_id as "clienteId",
-              p.cliente_nombre as "clienteNombre",
-              'pedido_calle' as origen,
-              coalesce(
-                json_agg(
-                  json_build_object(
-                    'descripcion', i.descripcion,
-                    'cantidad', i.cantidad,
-                    'precioUnitario', i.precio_unitario,
-                    'subtotal', i.subtotal
-                  )
-                ) filter (where i.id is not null),
-                '[]'::json
-              ) as items
-       from pedidos_calle p
-       left join pedido_calle_items i on i.pedido_id = p.id
+  const pedidosCalleBase = `
+    select p.id,
+           p.calle_mostrada as titulo,
+           p.repartidor_id as "repartidorId",
+           p.repartidor_nombre as "repartidorNombre",
+           p.total,
+           p.notas,
+           p.estado,
+           p.creado_en_ms as "creadoEn",
+           p.cliente_id as "clienteId",
+           p.cliente_nombre as "clienteNombre",
+           'pedido_calle' as origen,
+           coalesce(
+             json_agg(
+               json_build_object(
+                 'descripcion', i.descripcion,
+                 'cantidad', i.cantidad,
+                 'precioUnitario', i.precio_unitario,
+                 'subtotal', i.subtotal
+               )
+             ) filter (where i.id is not null),
+             '[]'::json
+           ) as items
+    from pedidos_calle p
+    left join pedido_calle_items i on i.pedido_id = p.id`;
+
+  const pedidosCalleQuery = cierre
+    ? `${pedidosCalleBase}
        where p.jornada_id = $1
           or (p.jornada_id is null
               and p.repartidor_id = $2
@@ -229,29 +235,13 @@ entregasRouter.get('/admin-reportes/historial/:jornadaId/pedidos', requireAuth, 
               and p.creado_en_ms <= $4)
        group by p.id
        order by p.creado_en_ms asc`
-    : `select p.id,
-              p.calle_mostrada as titulo,
-              p.repartidor_id as "repartidorId",
-              p.repartidor_nombre as "repartidorNombre",
-              p.total,
-              p.notas,
-              p.estado,
-              p.creado_en_ms as "creadoEn",
-              p.cliente_id as "clienteId",
-              p.cliente_nombre as "clienteNombre",
-              'pedido_calle' as origen,
-              coalesce(
-                json_agg(json_build_object('descripcion', i.descripcion, 'cantidad', i.cantidad, 'precioUnitario', i.precio_unitario, 'subtotal', i.subtotal)) filter (where i.id is not null),
-                '[]'::json
-              ) as items
-       from pedidos_calle p
-       left join pedido_calle_items i on i.pedido_id = p.id
+    : `${pedidosCalleBase}
        where p.jornada_id = $1
        group by p.id
        order by p.creado_en_ms asc`;
 
-  const pedidosCalleParams = jornada
-    ? [jornadaId, jornada.repartidor_id, iniciada_ms, fin_ms]
+  const pedidosCalleParams = cierre
+    ? [jornadaId, cierre.repartidor_id, inicioMs, finMs]
     : [jornadaId];
 
   const { rows: rowsCalle } = await pool.query(pedidosCalleQuery, pedidosCalleParams);

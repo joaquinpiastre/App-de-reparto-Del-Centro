@@ -78,8 +78,7 @@ export default function HomeRepartidor() {
             cerrando.current = true;
             void cerrarJornada().finally(() => {
               cerrando.current = false;
-              // Forzar re-render explícito para evitar pantalla en blanco
-              router.replace('/(repartidor)');
+              // No navegar — el cambio de estado (jornadaActiva: false) ya re-renderiza la pantalla
             });
           },
         },

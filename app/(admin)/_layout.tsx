@@ -80,7 +80,8 @@ function AdminTabs() {
       >
         <Tabs.Screen name="index" options={{ title: 'Inicio', tabBarIcon: ({ color, focused }) => <MaterialIcons name="dashboard" size={focused ? 23 : 21} color={color} /> }} />
         <Tabs.Screen name="asignaciones" options={{ title: 'Asignar', tabBarIcon: ({ color, focused }) => <MaterialIcons name="assignment-ind" size={focused ? 23 : 21} color={color} /> }} />
-        <Tabs.Screen name="pedidos-calle" options={{ title: 'Pedidos calle', tabBarIcon: ({ color, focused }) => <MaterialIcons name="storefront" size={focused ? 23 : 21} color={color} /> }} />
+        <Tabs.Screen name="pedidos-calle" options={{ title: 'Pedidos', tabBarIcon: ({ color, focused }) => <MaterialIcons name="storefront" size={focused ? 23 : 21} color={color} /> }} />
+        <Tabs.Screen name="pedidos-historial" options={{ title: 'Hist. Pedidos', tabBarIcon: ({ color, focused }) => <MaterialIcons name="receipt-long" size={focused ? 23 : 21} color={color} /> }} />
         <Tabs.Screen name="mapa-vivo" options={{ title: 'Mapa', tabBarIcon: ({ color, focused }) => <MaterialIcons name="map" size={focused ? 23 : 21} color={color} /> }} />
         <Tabs.Screen name="historial" options={{ title: 'Historial', tabBarIcon: ({ color, focused }) => <MaterialIcons name="history" size={focused ? 23 : 21} color={color} /> }} />
         <Tabs.Screen name="clientes" options={{ title: 'Clientes', tabBarIcon: ({ color, focused }) => <MaterialIcons name="groups" size={focused ? 23 : 21} color={color} /> }} />

@@ -26,6 +26,7 @@ export default function Historial() {
   const [loadingPedidos, setLoadingPedidos] = useState(false);
   const [loadingEntregas, setLoadingEntregas] = useState(false);
   const [pedidosJornada, setPedidosJornada] = useState<PedidoJornadaHistorial[]>([]);
+  const [pedidosJornadaId, setPedidosJornadaId] = useState<string | null>(null);
   const [entregasJornada, setEntregasJornada] = useState<EntregaJornadaHistorial[]>([]);
   const [pedidosCalleFinalizados, setPedidosCalleFinalizados] = useState<PedidoCalle[]>([]);
   const [loadingPedidosCalle, setLoadingPedidosCalle] = useState(false);
@@ -81,8 +82,10 @@ export default function Historial() {
       setLoadingPedidos(true);
       const pedidos = await obtenerPedidosJornadaAdmin(jornadaId);
       setPedidosJornada(pedidos);
+      setPedidosJornadaId(jornadaId);
     } catch {
       setPedidosJornada([]);
+      setPedidosJornadaId(jornadaId);
     } finally {
       setLoadingPedidos(false);
     }
@@ -127,7 +130,7 @@ export default function Historial() {
             <>
               <MapaRecorridoHistorial points={recorrido?.points ?? []} stops={recorrido?.stops ?? []} />
               <Text style={styles.row}>
-                Puntos: {recorrido?.points.length ?? 0} · Paradas +2 min: {recorrido?.stops.length ?? 0}
+                Puntos GPS: {recorrido?.points.length ?? 0} · Paradas detectadas: {recorrido?.stops.length ?? 0}
               </Text>
               {(recorrido?.stops.length ?? 0) > 0
                 ? (recorrido?.stops ?? []).map((s, i) => (
@@ -179,10 +182,14 @@ export default function Historial() {
           </View>
         ))
       )}
-      {pedidosJornada.length > 0 ? (
+      {pedidosJornadaId ? (
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Pedidos en calle del turno</Text>
-          <Text style={styles.row}>{pedidosJornada.length} pedido(s) levantado(s) en la calle</Text>
+          <Text style={styles.sectionTitle}>Pedidos del turno</Text>
+          {pedidosJornada.length === 0 ? (
+            <Text style={styles.row}>Sin pedidos de calle registrados para este turno.</Text>
+          ) : (
+            <Text style={styles.row}>{pedidosJornada.length} pedido(s) levantado(s) en la calle</Text>
+          )}
           {pedidosJornada.map((p) => (
             <View key={p.id} style={styles.subCard}>
               {p.clienteNombre ? (
