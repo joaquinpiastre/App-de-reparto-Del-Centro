@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -27,6 +27,7 @@ export default function HomeRepartidor() {
   } = useAppStore();
   const [tick, setTick] = useState(0);
   const [pendientesHoy, setPendientesHoy] = useState<number | null>(null);
+  const cerrando = useRef(false);
 
   useEffect(() => {
     if (!jornadaActiva || !jornadaInicioEpoch) return;
@@ -70,7 +71,18 @@ export default function HomeRepartidor() {
       '¿Guardar y finalizar la jornada? Se guardará todo en el historial.',
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Terminar', onPress: () => void cerrarJornada() },
+        {
+          text: 'Terminar',
+          onPress: () => {
+            if (cerrando.current) return;
+            cerrando.current = true;
+            void cerrarJornada().finally(() => {
+              cerrando.current = false;
+              // Forzar re-render explícito para evitar pantalla en blanco
+              router.replace('/(repartidor)');
+            });
+          },
+        },
       ]
     );
   };

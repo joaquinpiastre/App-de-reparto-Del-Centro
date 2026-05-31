@@ -87,7 +87,11 @@ export default function Resumen() {
             { text: 'Cancelar', style: 'cancel' },
             {
               text: 'Guardar',
-              onPress: () => void cerrarJornada(),
+              onPress: () => {
+                void cerrarJornada().finally(() => {
+                  router.replace('/(repartidor)');
+                });
+              },
             },
           ]);
         }}

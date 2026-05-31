@@ -142,9 +142,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
       entregaTimerSegundos: 0,
     });
     if (usuario?.id) {
-      await iniciarGPS(jornadaId, usuario.id, usuario.nombre).catch((err) =>
-        console.warn('iniciarGPS:', err)
-      );
+      await iniciarGPS(jornadaId, usuario.id, usuario.nombre).catch((err) => {
+        const msg = err instanceof Error ? err.message : 'No se pudo iniciar el GPS.';
+        Alert.alert(
+          'GPS no disponible',
+          `${msg}\n\nEl recorrido no se va a registrar. Para habilitarlo, andá a Ajustes del teléfono → Permisos → Ubicación → Siempre.`
+        );
+      });
     }
   },
 
@@ -195,14 +199,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
     // Revertir a presencia: el admin sigue viendo al repartidor aunque terminó el turno
     await detenerGPS(true).catch((err) => console.warn('detenerGPS:', err));
 
-    // Sincronizar con backend en segundo plano
+    // Sincronizar con backend — cada llamada en su propio try-catch para que un fallo
+    // en una no impida que las demás se ejecuten
     if (payload) {
       try {
         await registrarCierreJornadaApi(payload);
-        await cerrarTurnoPedidosCalle(payload.jornadaId, payload.repartidorId).catch(() => {});
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'No se pudo enviar el cierre al backend.';
         Alert.alert('Cierre no sincronizado', `${msg}\n\nEl turno se cerró en el dispositivo.`);
+      }
+      // Siempre asociar los pedidos de calle a la jornada, aunque el cierre haya fallado
+      try {
+        await cerrarTurnoPedidosCalle(payload.jornadaId, payload.repartidorId);
+      } catch {
+        // Silencioso — los pedidos se pueden reasociar manualmente si es necesario
       }
     }
   },

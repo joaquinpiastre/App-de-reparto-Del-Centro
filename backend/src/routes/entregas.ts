@@ -186,37 +186,75 @@ entregasRouter.get('/admin-reportes/historial/:jornadaId/pedidos', requireAuth, 
 
   await ensureCierresTable();
 
-  // Obtener pedidos_calle asociados a esta jornada
-  const { rows: rowsCalle } = await pool.query(
-    `select p.id,
-            p.calle_mostrada as titulo,
-            p.repartidor_id as "repartidorId",
-            p.repartidor_nombre as "repartidorNombre",
-            p.total,
-            p.notas,
-            p.estado,
-            p.creado_en_ms as "creadoEn",
-            p.cliente_id as "clienteId",
-            p.cliente_nombre as "clienteNombre",
-            'pedido_calle' as origen,
-            coalesce(
-              json_agg(
-                json_build_object(
-                  'descripcion', i.descripcion,
-                  'cantidad', i.cantidad,
-                  'precioUnitario', i.precio_unitario,
-                  'subtotal', i.subtotal
-                )
-              ) filter (where i.id is not null),
-              '[]'::json
-            ) as items
-     from pedidos_calle p
-     left join pedido_calle_items i on i.pedido_id = p.id
-     where p.jornada_id = $1
-     group by p.id
-     order by p.creado_en_ms asc`,
+  // Obtener info de la jornada para el fallback por fecha
+  const jornadaInfo = await pool.query<{ repartidor_id: string; iniciada_en: Date }>(
+    `select repartidor_id, iniciada_en from jornadas where id = $1`,
     [jornadaId]
-  );
+  ).catch(() => ({ rows: [] as Array<{ repartidor_id: string; iniciada_en: Date }> }));
+  const jornada = jornadaInfo.rows[0];
+
+  // Ventana de tiempo de la jornada: desde inicio hasta fin del mismo día
+  const iniciada_ms = jornada ? new Date(jornada.iniciada_en).getTime() : 0;
+  const fin_ms = jornada ? iniciada_ms + 24 * 60 * 60 * 1000 : 0;
+
+  const pedidosCalleQuery = jornada
+    ? `select p.id,
+              p.calle_mostrada as titulo,
+              p.repartidor_id as "repartidorId",
+              p.repartidor_nombre as "repartidorNombre",
+              p.total,
+              p.notas,
+              p.estado,
+              p.creado_en_ms as "creadoEn",
+              p.cliente_id as "clienteId",
+              p.cliente_nombre as "clienteNombre",
+              'pedido_calle' as origen,
+              coalesce(
+                json_agg(
+                  json_build_object(
+                    'descripcion', i.descripcion,
+                    'cantidad', i.cantidad,
+                    'precioUnitario', i.precio_unitario,
+                    'subtotal', i.subtotal
+                  )
+                ) filter (where i.id is not null),
+                '[]'::json
+              ) as items
+       from pedidos_calle p
+       left join pedido_calle_items i on i.pedido_id = p.id
+       where p.jornada_id = $1
+          or (p.jornada_id is null
+              and p.repartidor_id = $2
+              and p.creado_en_ms >= $3
+              and p.creado_en_ms <= $4)
+       group by p.id
+       order by p.creado_en_ms asc`
+    : `select p.id,
+              p.calle_mostrada as titulo,
+              p.repartidor_id as "repartidorId",
+              p.repartidor_nombre as "repartidorNombre",
+              p.total,
+              p.notas,
+              p.estado,
+              p.creado_en_ms as "creadoEn",
+              p.cliente_id as "clienteId",
+              p.cliente_nombre as "clienteNombre",
+              'pedido_calle' as origen,
+              coalesce(
+                json_agg(json_build_object('descripcion', i.descripcion, 'cantidad', i.cantidad, 'precioUnitario', i.precio_unitario, 'subtotal', i.subtotal)) filter (where i.id is not null),
+                '[]'::json
+              ) as items
+       from pedidos_calle p
+       left join pedido_calle_items i on i.pedido_id = p.id
+       where p.jornada_id = $1
+       group by p.id
+       order by p.creado_en_ms asc`;
+
+  const pedidosCalleParams = jornada
+    ? [jornadaId, jornada.repartidor_id, iniciada_ms, fin_ms]
+    : [jornadaId];
+
+  const { rows: rowsCalle } = await pool.query(pedidosCalleQuery, pedidosCalleParams);
 
   // Obtener pedidos_admin asociados a esta jornada (si la columna existe)
   let rowsAdmin: typeof rowsCalle = [];

@@ -31,6 +31,9 @@ export function MapaRecorridoHistorial({ points, stops }: Props) {
     return (
       <View style={styles.empty}>
         <Text style={styles.emptyText}>Sin puntos GPS para esta jornada.</Text>
+        <Text style={styles.emptyHint}>
+          El recorrido se registra solo si el repartidor tiene permisos de ubicación en segundo plano activados en su teléfono.
+        </Text>
       </View>
     );
   }
@@ -72,5 +75,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 16,
   },
-  emptyText: { fontFamily: 'Poppins_600SemiBold', color: COLORS.grisSecundario },
+  emptyText: { fontFamily: 'Poppins_600SemiBold', color: COLORS.grisSecundario, textAlign: 'center' },
+  emptyHint: { fontFamily: 'Poppins_400Regular', fontSize: 12, color: COLORS.grisSecundario, textAlign: 'center', marginTop: 6, lineHeight: 17 },
 });
