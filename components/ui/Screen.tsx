@@ -12,9 +12,10 @@ interface Props extends PropsWithChildren {
   showBack?: boolean;
   scrollable?: boolean;
   showHome?: boolean;
+  onHome?: () => void;
 }
 
-export function Screen({ title, subtitle, showBack, scrollable, showHome, children }: Props) {
+export function Screen({ title, subtitle, showBack, scrollable, showHome, onHome, children }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
@@ -63,7 +64,7 @@ export function Screen({ title, subtitle, showBack, scrollable, showHome, childr
             ) : <View />}
             {showHome ? (
               <Pressable
-                onPress={() => router.replace('/(repartidor)')}
+                onPress={() => onHome ? onHome() : router.replace('/(repartidor)')}
                 style={styles.homeBtn}
                 hitSlop={12}
                 accessibilityRole="button"

@@ -1,13 +1,12 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Linking, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { TimerEntrega } from '@/components/entrega/TimerEntrega';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
-import { useTimer } from '@/hooks/useTimer';
 import { COLORS } from '@/constants/colors';
 import { actualizarEstadoAsignacion } from '@/services/asignaciones';
 import { useAppStore } from '@/store/useAppStore';
@@ -22,20 +21,32 @@ export default function EnEntrega() {
     completarVisitaActual,
     reportarProblemaActual,
     setEntregaTimerSegundos,
+    viajeIniciadoEpoch,
   } = useAppStore();
+
   const cliente = clientesDelDia[clienteActualIndex];
-  const timerActivo = jornadaActiva && !!cliente && cliente.estado === 'en_camino';
-  const segundos = useTimer(timerActivo);
   const [notas, setNotas] = useState('');
-  // Evitar registrar llegada dos veces para el mismo cliente
   const llegadaRegistradaRef = useRef<string | null>(null);
+
+  // Timer de viaje: cuenta desde que se presionó VISITAR
+  const [segundosViaje, setSegundosViaje] = useState(0);
+  useEffect(() => {
+    if (!jornadaActiva || !viajeIniciadoEpoch) {
+      setSegundosViaje(0);
+      return;
+    }
+    setSegundosViaje(Math.floor((Date.now() - viajeIniciadoEpoch) / 1000));
+    const id = setInterval(() => {
+      setSegundosViaje(Math.floor((Date.now() - viajeIniciadoEpoch) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [jornadaActiva, viajeIniciadoEpoch]);
 
   useFocusEffect(
     useCallback(() => {
       if (cliente?.estado === 'pendiente') {
         const ahora = Date.now();
         marcarClienteEstado(cliente.id, 'en_camino');
-        // Registrar hora de llegada en el backend si no fue registrada para este cliente
         if (llegadaRegistradaRef.current !== cliente.id) {
           llegadaRegistradaRef.current = cliente.id;
           void actualizarEstadoAsignacion(cliente.id, 'en_camino', {
@@ -66,10 +77,18 @@ export default function EnEntrega() {
     Linking.openURL(`tel:${tel}`);
   };
 
+  // Confirmar visita normalmente (desde la pantalla de entrega)
   const confirmarVisita = () => {
-    setEntregaTimerSegundos(timerActivo ? segundos : 0);
+    setEntregaTimerSegundos(segundosViaje);
     completarVisitaActual({ notasRepartidor: notas.trim() || undefined });
     router.replace('/(repartidor)/ruta-del-dia');
+  };
+
+  // Confirmar visita y volver al home (desde el botón de casa)
+  const confirmarVisitaEIrHome = () => {
+    setEntregaTimerSegundos(segundosViaje);
+    completarVisitaActual({ notasRepartidor: notas.trim() || undefined });
+    router.replace('/(repartidor)');
   };
 
   const confirmarProblema = () => {
@@ -99,6 +118,7 @@ export default function EnEntrega() {
       showBack
       showHome
       scrollable
+      onHome={confirmarVisitaEIrHome}
     >
       {/* Datos del cliente */}
       <View style={styles.card}>
@@ -115,10 +135,11 @@ export default function EnEntrega() {
         ) : null}
       </View>
 
-      {/* Timer */}
+      {/* Timer de viaje */}
       <View style={styles.timerCard}>
-        <Text style={styles.timerLabel}>Tiempo en parada</Text>
-        <TimerEntrega segundos={timerActivo ? segundos : 0} />
+        <Text style={styles.timerLabel}>Tiempo de viaje</Text>
+        <TimerEntrega segundos={segundosViaje} />
+        <Text style={styles.timerHint}>Desde que saliste hacia este cliente</Text>
       </View>
 
       {/* Notas opcionales */}
@@ -184,6 +205,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   timerLabel: { fontFamily: 'Poppins_600SemiBold', color: COLORS.grisTexto },
+  timerHint: { fontFamily: 'Poppins_400Regular', fontSize: 11, color: COLORS.grisSecundario, marginTop: 2 },
   notasCard: {
     backgroundColor: '#fff',
     borderRadius: 14,

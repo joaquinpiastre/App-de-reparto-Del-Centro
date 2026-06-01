@@ -63,11 +63,14 @@ interface AppStore {
   cargando: boolean;
   fotoPendienteUri: string | null;
   entregaTimerSegundos: number;
+  // Epoch en ms cuando el repartidor presionó "VISITAR" — para medir tiempo de viaje
+  viajeIniciadoEpoch: number | null;
   setUsuario: (usuario: Usuario | null) => void;
   setClientesDelDia: (clientes: Cliente[]) => void;
   setUltimaPosicion: (c: Coordenadas | null) => void;
   setFotoPendienteUri: (uri: string | null) => void;
   setEntregaTimerSegundos: (n: number) => void;
+  iniciarViajeACliente: (index: number) => void;
   iniciarJornada: () => Promise<void>;
   pausarJornada: () => Promise<void>;
   cerrarJornada: () => Promise<void>;
@@ -92,6 +95,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   cargando: false,
   fotoPendienteUri: null,
   entregaTimerSegundos: 0,
+  viajeIniciadoEpoch: null,
 
   setUsuario: (usuario) => {
     set({ usuario });
@@ -103,6 +107,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setUltimaPosicion: (c) => set({ ultimaPosicion: c }),
   setFotoPendienteUri: (uri) => set({ fotoPendienteUri: uri }),
   setEntregaTimerSegundos: (n) => set({ entregaTimerSegundos: n }),
+  iniciarViajeACliente: (index) => {
+    set({ clienteActualIndex: index, viajeIniciadoEpoch: Date.now() });
+  },
 
   iniciarJornada: async () => {
     const { usuario } = get();
@@ -195,6 +202,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       clientesDelDia: [],
       fotoPendienteUri: null,
       entregaTimerSegundos: 0,
+      viajeIniciadoEpoch: null,
     });
     // Revertir a presencia: el admin sigue viendo al repartidor aunque terminó el turno
     await detenerGPS(true).catch((err) => console.warn('detenerGPS:', err));
@@ -285,7 +293,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const msg = err instanceof Error ? err.message : 'No se pudo actualizar la visita.';
       Alert.alert('Visita no sincronizada', msg);
     });
-    set({ fotoPendienteUri: null });
+    set({ fotoPendienteUri: null, viajeIniciadoEpoch: null });
     get().siguienteCliente();
   },
 
@@ -293,6 +301,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const { clienteActualIndex, clientesDelDia, jornadaId } = get();
     const c = clientesDelDia[clienteActualIndex];
     if (!c) return;
+    set({ viajeIniciadoEpoch: null });
     get().actualizarCliente(c.id, { estado: 'problema', notasRepartidor: nota });
     void actualizarEstadoAsignacion(c.id, 'problema', {
       notasRepartidor: nota,

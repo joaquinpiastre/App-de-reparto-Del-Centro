@@ -57,6 +57,7 @@ export default function RutaDelDia() {
     clienteActualIndex,
     jornadaActiva,
     ultimaPosicion,
+    iniciarViajeACliente,
   } = useAppStore();
 
   if (!jornadaActiva || clientesDelDia.length === 0) {
@@ -148,7 +149,7 @@ export default function RutaDelDia() {
                   label="VISITAR"
                   variant="secondary"
                   onPress={() => {
-                    useAppStore.setState({ clienteActualIndex: index });
+                    iniciarViajeACliente(index);
                     router.push('/(repartidor)/en-entrega');
                   }}
                 />

@@ -26,12 +26,42 @@ export async function publicarPedidoCalle(
   return pedido;
 }
 
-export async function actualizarEstadoPedidoCalle(id: string, estado: EstadoPedidoCalle): Promise<void> {
+export async function actualizarEstadoPedidoCalle(
+  id: string,
+  estado: EstadoPedidoCalle,
+  nota?: string
+): Promise<void> {
   usePedidosCalleStore.getState().marcarEstado(id, estado);
   if (!API_ENABLED) return;
   await apiRequest(`/pedidos-calle/${id}/estado`, {
     method: 'PATCH',
-    body: JSON.stringify({ estado }),
+    body: JSON.stringify({ estado, nota }),
+  });
+}
+
+export async function obtenerPedidosCalleFinalizados(): Promise<PedidoCalle[]> {
+  if (!API_ENABLED) {
+    return usePedidosCalleStore.getState().pedidos.filter(
+      (p) => p.estado === 'retirado' || p.estado === 'cancelado'
+    );
+  }
+  const data = await apiRequest<{ pedidos: PedidoCalle[] }>('/pedidos-calle');
+  return data.pedidos.filter((p) => p.estado === 'retirado' || p.estado === 'cancelado');
+}
+
+export async function obtenerTodosLosPedidosCalle(): Promise<PedidoCalle[]> {
+  if (!API_ENABLED) {
+    return usePedidosCalleStore.getState().pedidos;
+  }
+  const data = await apiRequest<{ pedidos: PedidoCalle[] }>('/pedidos-calle');
+  return data.pedidos;
+}
+
+export async function cerrarTurnoPedidosCalle(jornadaId: string, repartidorId: string): Promise<void> {
+  if (!API_ENABLED) return;
+  await apiRequest('/pedidos-calle/cerrar-turno', {
+    method: 'POST',
+    body: JSON.stringify({ jornadaId, repartidorId }),
   });
 }
 
