@@ -130,7 +130,7 @@ gpsRouter.get('/gps/live', requireAuth, async (_req, res) => {
        gp.timestamp_ms as "actualizadoEn"
      from gps_points gp
      join repartidores r on r.id = gp.repartidor_id
-     where gp.timestamp_ms > extract(epoch from now() - interval '10 hours') * 1000
+     where gp.timestamp_ms > extract(epoch from now() - interval '24 hours') * 1000
      order by gp.repartidor_id, gp.timestamp_ms desc`
   );
 

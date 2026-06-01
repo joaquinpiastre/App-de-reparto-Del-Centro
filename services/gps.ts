@@ -220,9 +220,31 @@ export async function detenerGPS(revertirAPresencia = false) {
 }
 
 /**
+ * Envía la última posición conocida inmediatamente (sin esperar el task de fondo).
+ * Se llama cuando la app vuelve al frente para garantizar visibilidad instantánea.
+ */
+export async function enviarPosicionActual(): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    const repartidorId = await AsyncStorage.getItem('repartidor_id');
+    if (!repartidorId || !API_ENABLED) return;
+    const loc = await Location.getLastKnownPositionAsync({});
+    if (!loc) return;
+    await mandarPosicionGPS(
+      loc.coords.latitude,
+      loc.coords.longitude,
+      loc.coords.speed ?? 0,
+      loc.coords.accuracy ?? 0,
+    );
+  } catch {
+    // silencioso — no interrumpir flujo de UI
+  }
+}
+
+/**
  * Llamar cada vez que la app vuelve al frente.
- * Si el GPS debería estar activo (jornada en curso) pero se detuvo
- * (SO agresivo, proceso matado), lo reinicia automáticamente.
+ * En Xiaomi y Android agresivos, el task puede estar "registrado" pero muerto.
+ * Por eso siempre forzamos stop+start para asegurar que esté corriendo de verdad.
  */
 export async function reanudarGPSSiNecesario(): Promise<void> {
   try {
@@ -233,8 +255,11 @@ export async function reanudarGPSSiNecesario(): Promise<void> {
     const repartidorId = await AsyncStorage.getItem('repartidor_id');
     if (!jornadaId || !repartidorId) return;
 
+    // Siempre parar y reiniciar — en Xiaomi el task puede estar "activo" pero sin enviar
     const yaActivo = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);
-    if (yaActivo) return;
+    if (yaActivo) {
+      await Location.stopLocationUpdatesAsync(LOCATION_TASK);
+    }
 
     const repartidorNombre = await AsyncStorage.getItem('repartidor_nombre') ?? repartidorId;
     await iniciarGPS(jornadaId, repartidorId, repartidorNombre);

@@ -18,7 +18,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { inicializarNotificaciones } from '@/services/notificaciones';
 import { restaurarSesionApi } from '@/services/authApi';
-import { reanudarGPSSiNecesario } from '@/services/gps';
+import { enviarPosicionActual, reanudarGPSSiNecesario } from '@/services/gps';
 import { useAppStore } from '@/store/useAppStore';
 
 /**
@@ -42,14 +42,19 @@ export default function RootLayout() {
     void inicializarNotificaciones();
   }, []);
 
-  // Reiniciar GPS si estaba activo y el SO lo mató (pantalla bloqueada, memoria, etc.)
+  // Cada vez que la app vuelve al frente:
+  // 1. Enviar posición inmediata (visible en mapa admin al instante)
+  // 2. Reiniciar GPS task (Xiaomi puede haberlo matado con la pantalla apagada)
   useEffect(() => {
     if (Platform.OS === 'web') return;
+    const alVolver = () => {
+      void enviarPosicionActual();      // posición inmediata
+      void reanudarGPSSiNecesario();   // reinicio del task de fondo
+    };
     const sub = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') void reanudarGPSSiNecesario();
+      if (nextState === 'active') alVolver();
     });
-    // Verificar también al arrancar la app
-    void reanudarGPSSiNecesario();
+    alVolver(); // también al arrancar la app
     return () => sub.remove();
   }, []);
 
