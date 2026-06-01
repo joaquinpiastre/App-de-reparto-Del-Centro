@@ -14,7 +14,7 @@ export default function RepartidorLayout() {
 
   return (
     <View style={shellStyle}>
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false, animation: 'fade' }} />
     </View>
   );
 }

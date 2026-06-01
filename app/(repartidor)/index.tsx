@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -27,6 +27,7 @@ export default function HomeRepartidor() {
   } = useAppStore();
   const [tick, setTick] = useState(0);
   const [pendientesHoy, setPendientesHoy] = useState<number | null>(null);
+  const [guardandoTurno, setGuardandoTurno] = useState(false);
   const cerrando = useRef(false);
 
   useEffect(() => {
@@ -76,9 +77,10 @@ export default function HomeRepartidor() {
           onPress: () => {
             if (cerrando.current) return;
             cerrando.current = true;
+            setGuardandoTurno(true);
             void cerrarJornada().finally(() => {
               cerrando.current = false;
-              // No navegar — el cambio de estado (jornadaActiva: false) ya re-renderiza la pantalla
+              setGuardandoTurno(false);
             });
           },
         },
@@ -94,6 +96,17 @@ export default function HomeRepartidor() {
     irAlPrimerPendiente();
     router.push('/(repartidor)/en-entrega');
   };
+
+  if (guardandoTurno) {
+    return (
+      <Screen title="Guardando turno…" subtitle="Aguardá un momento">
+        <View style={styles.guardandoBox}>
+          <ActivityIndicator size="large" color={COLORS.verdePrincipal} />
+          <Text style={styles.guardandoTxt}>Guardando y sincronizando el turno…</Text>
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen title={`Hola, ${nombre}`} subtitle="Del Centro Pinturerias · Reparto" scrollable>
@@ -335,5 +348,20 @@ const styles = StyleSheet.create({
   },
   rowBottomBtn: {
     flex: 1,
+  },
+  guardandoBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    paddingVertical: 48,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e8ecef',
+  },
+  guardandoTxt: {
+    fontFamily: 'Poppins_600SemiBold',
+    color: COLORS.grisTexto,
+    textAlign: 'center',
   },
 });

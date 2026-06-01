@@ -77,18 +77,20 @@ export default function EnEntrega() {
     Linking.openURL(`tel:${tel}`);
   };
 
-  // Confirmar visita normalmente (desde la pantalla de entrega)
+  // Confirmar visita normalmente — usa back() para volver a la ruta que ya está en el stack
   const confirmarVisita = () => {
     setEntregaTimerSegundos(segundosViaje);
     completarVisitaActual({ notasRepartidor: notas.trim() || undefined });
-    router.replace('/(repartidor)/ruta-del-dia');
+    router.back();
   };
 
   // Confirmar visita y volver al home (desde el botón de casa)
   const confirmarVisitaEIrHome = () => {
     setEntregaTimerSegundos(segundosViaje);
     completarVisitaActual({ notasRepartidor: notas.trim() || undefined });
-    router.replace('/(repartidor)');
+    // Volver a ruta primero y luego al home evita frames en blanco en Android
+    router.back();
+    setTimeout(() => router.replace('/(repartidor)'), 50);
   };
 
   const confirmarProblema = () => {
@@ -102,7 +104,7 @@ export default function EnEntrega() {
           style: 'destructive',
           onPress: () => {
             reportarProblemaActual(notas.trim() || undefined);
-            router.replace('/(repartidor)/ruta-del-dia');
+            router.back();
           },
         },
       ]
