@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { MapaRecorridoHistorial } from '@/components/mapa/MapaRecorridoHistorial';
@@ -15,9 +15,25 @@ import {
   type PedidoJornadaHistorial,
   type RecorridoJornadaResponse,
 } from '@/services/adminReportes';
+import { obtenerTodosLosPedidosCalle } from '@/services/pedidosCalle';
+import type { PedidoCalle, EstadoPedidoCalle } from '@/types';
 import type { CierreJornadaResumen } from '@/store/useHistorialStore';
 
 type VistaActiva = 'recorrido' | 'lugares' | 'pedidos';
+
+const ESTADO_COLOR: Record<string, string> = {
+  pendiente: '#f59e0b', visto: '#3b82f6', armado: '#8b5cf6',
+  retirado: '#22c55e', cancelado: '#ef4444',
+};
+
+const FILTROS: { label: string; value: EstadoPedidoCalle | 'todos' }[] = [
+  { label: 'Todos', value: 'todos' },
+  { label: 'Pendiente', value: 'pendiente' },
+  { label: 'Visto', value: 'visto' },
+  { label: 'Armado', value: 'armado' },
+  { label: 'Retirado', value: 'retirado' },
+  { label: 'Cancelado', value: 'cancelado' },
+];
 
 function fmtHora(ms?: number | null) {
   if (!ms) return '—';
@@ -43,16 +59,51 @@ export default function Historial() {
   const pedidosCache   = useRef<Record<string, PedidoJornadaHistorial[]>>({});
   const entregasCache  = useRef<Record<string, EntregaJornadaHistorial[]>>({});
 
+  // Historial de pedidos de calle
+  const [todosPedidos, setTodosPedidos] = useState<PedidoCalle[]>([]);
+  const [loadingPedidosCalle, setLoadingPedidosCalle] = useState(false);
+  const [filtroPedidos, setFiltroPedidos] = useState<EstadoPedidoCalle | 'todos'>('todos');
+  const [busquedaPedidos, setBusquedaPedidos] = useState('');
+
+  const pedidosFiltrados = useMemo(() => {
+    let lista = todosPedidos;
+    if (filtroPedidos !== 'todos') lista = lista.filter((p) => p.estado === filtroPedidos);
+    const q = busquedaPedidos.trim().toLowerCase();
+    if (q) {
+      lista = lista.filter(
+        (p) =>
+          p.repartidorNombre.toLowerCase().includes(q) ||
+          p.calleMostrada.toLowerCase().includes(q) ||
+          p.items.some((it) => it.descripcion.toLowerCase().includes(q))
+      );
+    }
+    return lista;
+  }, [todosPedidos, filtroPedidos, busquedaPedidos]);
+
   const cargar = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await obtenerHistorialAdmin();
+      const [data, pedidos] = await Promise.all([
+        obtenerHistorialAdmin(),
+        obtenerTodosLosPedidosCalle().catch(() => [] as PedidoCalle[]),
+      ]);
       setCierres(data);
+      setTodosPedidos(pedidos.sort((a, b) => b.creadoEn - a.creadoEn));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo cargar el historial.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const actualizarPedidos = async () => {
+    try {
+      setLoadingPedidosCalle(true);
+      const pedidos = await obtenerTodosLosPedidosCalle();
+      setTodosPedidos(pedidos.sort((a, b) => b.creadoEn - a.creadoEn));
+    } catch { /* silencioso */ } finally {
+      setLoadingPedidosCalle(false);
     }
   };
 
@@ -280,6 +331,109 @@ export default function Historial() {
           </View>
         );
       })}
+
+      {/* ── Historial de Pedidos en Calle ── */}
+      <View style={[styles.card, styles.seccionPedidos]}>
+        <View style={styles.seccionHeader}>
+          <View style={styles.seccionTitRow}>
+            <MaterialIcons name="receipt-long" size={20} color={COLORS.verdeOscuro} />
+            <Text style={styles.seccionTit}>Historial de Pedidos en Calle</Text>
+          </View>
+          <Button
+            label={loadingPedidosCalle ? 'Actualizando…' : 'Actualizar'}
+            variant="secondary"
+            loading={loadingPedidosCalle}
+            onPress={() => void actualizarPedidos()}
+          />
+        </View>
+
+        {/* Buscador */}
+        <View style={styles.searchBox}>
+          <MaterialIcons name="search" size={16} color={COLORS.grisSecundario} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Buscar por repartidor, calle o producto…"
+            placeholderTextColor={COLORS.grisSecundario}
+            value={busquedaPedidos}
+            onChangeText={setBusquedaPedidos}
+          />
+        </View>
+
+        {/* Filtros */}
+        <View style={styles.filtroRow}>
+          {FILTROS.map((f) => (
+            <View
+              key={f.value}
+              style={[
+                styles.filtroBtn,
+                filtroPedidos === f.value && {
+                  backgroundColor: f.value === 'todos' ? COLORS.verdeOscuro : (ESTADO_COLOR[f.value] ?? COLORS.verdeOscuro),
+                },
+              ]}
+            >
+              <Text
+                style={[styles.filtroBtnTxt, filtroPedidos === f.value && styles.filtroBtnActivo]}
+                onPress={() => setFiltroPedidos(f.value)}
+              >
+                {f.label}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        <Text style={styles.resumenTxt}>
+          {pedidosFiltrados.length} pedido(s) · Total: ${pedidosFiltrados.reduce((acc, p) => acc + Number(p.total ?? 0), 0).toFixed(2)}
+        </Text>
+
+        {pedidosFiltrados.length === 0 ? (
+          <Text style={styles.row}>{loading ? 'Cargando…' : 'Sin pedidos para mostrar.'}</Text>
+        ) : (
+          pedidosFiltrados.map((p) => (
+            <View key={p.id} style={styles.pedidoCalleCard}>
+              {/* Cabecera: repartidor + estado */}
+              <View style={styles.pedidoCalleHeader}>
+                <View style={styles.repTag}>
+                  <MaterialIcons name="person" size={12} color={COLORS.verdeOscuro} />
+                  <Text style={styles.repTagTxt}>{p.repartidorNombre}</Text>
+                </View>
+                <View style={[styles.estadoBadge, { backgroundColor: `${ESTADO_COLOR[p.estado] ?? '#888'}22` }]}>
+                  <Text style={[styles.estadoBadgeTxt, { color: ESTADO_COLOR[p.estado] ?? '#888' }]}>
+                    {p.estado.charAt(0).toUpperCase() + p.estado.slice(1)}
+                  </Text>
+                </View>
+              </View>
+              {/* Fecha + calle */}
+              <Text style={styles.pedidoFecha}>
+                {new Date(p.creadoEn).toLocaleString('es-AR', {
+                  weekday: 'short', day: '2-digit', month: 'short',
+                  hour: '2-digit', minute: '2-digit',
+                })}
+              </Text>
+              <Text style={styles.pedidoTitulo}>{p.calleMostrada}</Text>
+              {p.clienteNombre ? (
+                <View style={styles.pcClienteTag}>
+                  <Text style={styles.pcClienteTagTxt}>Cliente: {p.clienteNombre}</Text>
+                </View>
+              ) : null}
+              {/* Ítems */}
+              {p.items.length > 0 ? (
+                <View style={styles.pcItemsBox}>
+                  {p.items.map((it, idx) => (
+                    <View key={`${p.id}-${idx}`} style={styles.pcItemFila}>
+                      <Text style={styles.pcItemDesc} numberOfLines={2}>
+                        {it.cantidad} × {it.descripcion}
+                      </Text>
+                      <Text style={styles.pcItemPrecio}>${Number(it.subtotal ?? 0).toFixed(2)}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              <Text style={styles.pcPedidoTotal}>Total: ${Number(p.total ?? 0).toFixed(2)}</Text>
+              {p.notas?.trim() ? <Text style={styles.pcPedidoNota}>📝 {p.notas}</Text> : null}
+            </View>
+          ))
+        )}
+      </View>
     </Screen>
   );
 }
@@ -368,4 +522,33 @@ const styles = StyleSheet.create({
     borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3,
   },
   pcClienteTagTxt: { fontFamily: 'Poppins_600SemiBold', fontSize: 12, color: '#1565c0' },
+
+  // Sección historial de pedidos
+  seccionPedidos: { gap: 10 },
+  seccionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  seccionTitRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  seccionTit: { fontFamily: 'Poppins_700Bold', fontSize: 16, color: COLORS.grisTexto },
+  searchBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#f5f7fa', borderRadius: 10, borderWidth: 1,
+    borderColor: '#e0e6ea', paddingHorizontal: 10, paddingVertical: 7,
+  },
+  searchInput: { flex: 1, fontFamily: 'Poppins_400Regular', fontSize: 13, color: COLORS.grisTexto },
+  filtroRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  filtroBtn: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, backgroundColor: '#eff2f5' },
+  filtroBtnTxt: { fontFamily: 'Poppins_600SemiBold', fontSize: 12, color: COLORS.grisTexto },
+  filtroBtnActivo: { color: '#fff' },
+  resumenTxt: { fontFamily: 'Poppins_600SemiBold', fontSize: 13, color: COLORS.grisSecundario },
+
+  pedidoCalleCard: {
+    borderRadius: 12, padding: 10, backgroundColor: '#f8f9fa',
+    borderWidth: 1, borderColor: '#e8ecef', gap: 5,
+  },
+  pedidoCalleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
+  pcItemsBox: { borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 6, gap: 3 },
+  pcItemFila: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  pcItemDesc: { fontFamily: 'Poppins_400Regular', fontSize: 12, color: COLORS.grisTexto, flex: 1, lineHeight: 17 },
+  pcItemPrecio: { fontFamily: 'Poppins_600SemiBold', fontSize: 12, color: COLORS.grisTexto },
+  pcPedidoTotal: { fontFamily: 'Poppins_700Bold', fontSize: 13, color: COLORS.verdeOscuro },
+  pcPedidoNota: { fontFamily: 'Poppins_400Regular', fontSize: 12, color: '#b45309', fontStyle: 'italic' },
 });

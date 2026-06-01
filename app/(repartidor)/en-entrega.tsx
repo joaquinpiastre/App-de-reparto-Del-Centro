@@ -1,6 +1,6 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Alert, Linking, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { useTimer } from '@/hooks/useTimer';
 import { COLORS } from '@/constants/colors';
+import { actualizarEstadoAsignacion } from '@/services/asignaciones';
 import { useAppStore } from '@/store/useAppStore';
 
 export default function EnEntrega() {
@@ -16,6 +17,7 @@ export default function EnEntrega() {
     clientesDelDia,
     clienteActualIndex,
     jornadaActiva,
+    jornadaId,
     marcarClienteEstado,
     completarVisitaActual,
     reportarProblemaActual,
@@ -25,15 +27,25 @@ export default function EnEntrega() {
   const timerActivo = jornadaActiva && !!cliente && cliente.estado === 'en_camino';
   const segundos = useTimer(timerActivo);
   const [notas, setNotas] = useState('');
+  // Evitar registrar llegada dos veces para el mismo cliente
+  const llegadaRegistradaRef = useRef<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       if (cliente?.estado === 'pendiente') {
+        const ahora = Date.now();
         marcarClienteEstado(cliente.id, 'en_camino');
+        // Registrar hora de llegada en el backend si no fue registrada para este cliente
+        if (llegadaRegistradaRef.current !== cliente.id) {
+          llegadaRegistradaRef.current = cliente.id;
+          void actualizarEstadoAsignacion(cliente.id, 'en_camino', {
+            horaLlegadaMs: ahora,
+            jornadaId: jornadaId ?? undefined,
+          }).catch(() => {});
+        }
       }
-      // Limpiar notas al cambiar de cliente
       setNotas('');
-    }, [cliente?.id, cliente?.estado, marcarClienteEstado])
+    }, [cliente?.id, cliente?.estado, jornadaId, marcarClienteEstado])
   );
 
   if (!jornadaActiva || !cliente) {
