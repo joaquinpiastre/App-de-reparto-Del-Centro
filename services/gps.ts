@@ -255,11 +255,9 @@ export async function reanudarGPSSiNecesario(): Promise<void> {
     const repartidorId = await AsyncStorage.getItem('repartidor_id');
     if (!jornadaId || !repartidorId) return;
 
-    // Siempre parar y reiniciar — en Xiaomi el task puede estar "activo" pero sin enviar
+    // Solo reiniciar si el task realmente está detenido
     const yaActivo = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);
-    if (yaActivo) {
-      await Location.stopLocationUpdatesAsync(LOCATION_TASK);
-    }
+    if (yaActivo) return; // ya está corriendo, no interrumpir
 
     const repartidorNombre = await AsyncStorage.getItem('repartidor_nombre') ?? repartidorId;
     await iniciarGPS(jornadaId, repartidorId, repartidorNombre);
