@@ -183,5 +183,47 @@ gpsRouter.get('/gps/jornadas/:jornadaId/recorrido', requireAuth, async (req, res
     velocidad: r.velocidad == null ? null : Number(r.velocidad),
   }));
   const stops = detectStops(points);
-  res.json({ jornadaId, repartidorId, points, stops });
+
+  // Paradas explícitas de visitas marcadas por el repartidor
+  type VisitRow = {
+    hora_llegada_ms: number;
+    hora_salida_ms: number;
+    nombre: string;
+    estado: string;
+    lat: number | null;
+    lng: number | null;
+  };
+  const visitRows = await pool.query<VisitRow>(
+    `select a.hora_llegada_ms, a.hora_salida_ms, c.nombre, a.estado,
+       (select gp.lat from gps_points gp
+        where gp.jornada_id = $1
+        order by abs(gp.timestamp_ms - a.hora_llegada_ms) asc
+        limit 1) as lat,
+       (select gp.lng from gps_points gp
+        where gp.jornada_id = $1
+        order by abs(gp.timestamp_ms - a.hora_llegada_ms) asc
+        limit 1) as lng
+     from asignaciones a
+     join clientes c on c.id = a.cliente_id
+     where a.jornada_id = $1
+       and a.hora_llegada_ms is not null
+       and a.hora_salida_ms is not null
+       and a.estado in ('entregado', 'problema')
+     order by a.hora_llegada_ms asc`,
+    [jornadaId]
+  ).catch(() => ({ rows: [] as VisitRow[] }));
+
+  const visitStops = visitRows.rows
+    .filter((r: VisitRow) => r.lat != null && r.lng != null)
+    .map((r: VisitRow) => ({
+      lat: Number(r.lat),
+      lng: Number(r.lng),
+      inicio: Number(r.hora_llegada_ms),
+      fin: Number(r.hora_salida_ms),
+      duracionSegundos: Math.max(0, Math.round((Number(r.hora_salida_ms) - Number(r.hora_llegada_ms)) / 1000)),
+      nombre: r.nombre,
+      estado: r.estado as 'entregado' | 'problema',
+    }));
+
+  res.json({ jornadaId, repartidorId, points, stops, visitStops });
 });

@@ -222,6 +222,7 @@ export default function Historial() {
                     <MapaRecorridoHistorial
                       points={recorrido?.points ?? []}
                       stops={recorrido?.stops ?? []}
+                      visitStops={recorrido?.visitStops ?? []}
                     />
                     <Text style={styles.row}>
                       Puntos GPS: {recorrido?.points.length ?? 0} · Paradas: {recorrido?.stops.length ?? 0}

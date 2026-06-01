@@ -15,6 +15,7 @@ import { AppState, Platform, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { inicializarNotificaciones } from '@/services/notificaciones';
 import { restaurarSesionApi } from '@/services/authApi';
 import { reanudarGPSSiNecesario } from '@/services/gps';
@@ -58,6 +59,19 @@ export default function RootLayout() {
       const user = await restaurarSesionApi();
       if (!mounted) return;
       setUsuario(user);
+
+      // Restaurar viaje en curso si la app fue matada mientras el repartidor estaba en camino
+      if (user?.rol === 'repartidor' && Platform.OS !== 'web') {
+        const epochStr = await AsyncStorage.getItem('viaje_epoch');
+        const indexStr = await AsyncStorage.getItem('viaje_index');
+        if (epochStr && indexStr) {
+          useAppStore.setState({
+            viajeIniciadoEpoch: Number(epochStr),
+            clienteActualIndex: Number(indexStr),
+          });
+        }
+      }
+
       setSesionLista(true);
     })();
     return () => {

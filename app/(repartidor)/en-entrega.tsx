@@ -1,7 +1,7 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Linking, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, AppState, Linking, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { TimerEntrega } from '@/components/entrega/TimerEntrega';
@@ -10,6 +10,27 @@ import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
 import { actualizarEstadoAsignacion } from '@/services/asignaciones';
 import { useAppStore } from '@/store/useAppStore';
+
+function useSegundosDesdeEpoch(epoch: number | null): number {
+  const [, tick] = useState(0);
+
+  useEffect(() => {
+    if (!epoch) return;
+    // Tick cada segundo para re-renderizar
+    const interval = setInterval(() => tick((n) => n + 1), 1000);
+    // Cuando la pantalla vuelve del fondo, forzar re-render inmediato
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') tick((n) => n + 1);
+    });
+    return () => {
+      clearInterval(interval);
+      sub.remove();
+    };
+  }, [epoch]);
+
+  if (!epoch) return 0;
+  return Math.max(0, Math.floor((Date.now() - epoch) / 1000));
+}
 
 export default function EnEntrega() {
   const {
@@ -28,19 +49,8 @@ export default function EnEntrega() {
   const [notas, setNotas] = useState('');
   const llegadaRegistradaRef = useRef<string | null>(null);
 
-  // Timer de viaje: cuenta desde que se presionó VISITAR
-  const [segundosViaje, setSegundosViaje] = useState(0);
-  useEffect(() => {
-    if (!jornadaActiva || !viajeIniciadoEpoch) {
-      setSegundosViaje(0);
-      return;
-    }
-    setSegundosViaje(Math.floor((Date.now() - viajeIniciadoEpoch) / 1000));
-    const id = setInterval(() => {
-      setSegundosViaje(Math.floor((Date.now() - viajeIniciadoEpoch) / 1000));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [jornadaActiva, viajeIniciadoEpoch]);
+  // Timer: calcula siempre desde el epoch real → correcto al volver de background
+  const segundosViaje = useSegundosDesdeEpoch(viajeIniciadoEpoch);
 
   useFocusEffect(
     useCallback(() => {
@@ -77,20 +87,10 @@ export default function EnEntrega() {
     Linking.openURL(`tel:${tel}`);
   };
 
-  // Confirmar visita normalmente — usa back() para volver a la ruta que ya está en el stack
   const confirmarVisita = () => {
     setEntregaTimerSegundos(segundosViaje);
     completarVisitaActual({ notasRepartidor: notas.trim() || undefined });
     router.back();
-  };
-
-  // Confirmar visita y volver al home (desde el botón de casa)
-  const confirmarVisitaEIrHome = () => {
-    setEntregaTimerSegundos(segundosViaje);
-    completarVisitaActual({ notasRepartidor: notas.trim() || undefined });
-    // Volver a ruta primero y luego al home evita frames en blanco en Android
-    router.back();
-    setTimeout(() => router.replace('/(repartidor)'), 50);
   };
 
   const confirmarProblema = () => {
@@ -120,7 +120,11 @@ export default function EnEntrega() {
       showBack
       showHome
       scrollable
-      onHome={confirmarVisitaEIrHome}
+      onHome={() => {
+        // Solo navega al home — NO termina el viaje ni para el timer
+        // El repartidor puede reanudar desde el banner en el inicio
+        router.replace('/(repartidor)');
+      }}
     >
       {/* Datos del cliente */}
       <View style={styles.card}>

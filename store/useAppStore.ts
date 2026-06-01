@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { Alert, Platform } from 'react-native';
 
@@ -108,7 +109,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setFotoPendienteUri: (uri) => set({ fotoPendienteUri: uri }),
   setEntregaTimerSegundos: (n) => set({ entregaTimerSegundos: n }),
   iniciarViajeACliente: (index) => {
-    set({ clienteActualIndex: index, viajeIniciadoEpoch: Date.now() });
+    const epoch = Date.now();
+    set({ clienteActualIndex: index, viajeIniciadoEpoch: epoch });
+    void AsyncStorage.setItem('viaje_epoch', String(epoch));
+    void AsyncStorage.setItem('viaje_index', String(index));
   },
 
   iniciarJornada: async () => {
@@ -204,6 +208,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       entregaTimerSegundos: 0,
       viajeIniciadoEpoch: null,
     });
+    void AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index']);
     // Revertir a presencia: el admin sigue viendo al repartidor aunque terminó el turno
     await detenerGPS(true).catch((err) => console.warn('detenerGPS:', err));
 
@@ -294,6 +299,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       Alert.alert('Visita no sincronizada', msg);
     });
     set({ fotoPendienteUri: null, viajeIniciadoEpoch: null });
+    void AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index']);
     get().siguienteCliente();
   },
 
@@ -302,6 +308,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const c = clientesDelDia[clienteActualIndex];
     if (!c) return;
     set({ viajeIniciadoEpoch: null });
+    void AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index']);
     get().actualizarCliente(c.id, { estado: 'problema', notasRepartidor: nota });
     void actualizarEstadoAsignacion(c.id, 'problema', {
       notasRepartidor: nota,

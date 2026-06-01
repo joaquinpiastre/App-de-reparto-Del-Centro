@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -23,8 +23,25 @@ export default function HomeRepartidor() {
     resetSesion,
     usuario,
     clientesDelDia,
-    irAlPrimerPendiente,
+    clienteActualIndex,
+    viajeIniciadoEpoch,
   } = useAppStore();
+
+  // Timer del banner de entrega activa — re-calcula desde el epoch real
+  const [, tickBanner] = useState(0);
+  useEffect(() => {
+    if (!viajeIniciadoEpoch) return;
+    const id = setInterval(() => tickBanner((n) => n + 1), 1000);
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') tickBanner((n) => n + 1);
+    });
+    return () => { clearInterval(id); sub.remove(); };
+  }, [viajeIniciadoEpoch]);
+  const segundosBanner = viajeIniciadoEpoch
+    ? Math.max(0, Math.floor((Date.now() - viajeIniciadoEpoch) / 1000))
+    : 0;
+  const clienteEnCamino = clientesDelDia[clienteActualIndex];
+  const hayEntregaActiva = jornadaActiva && !!viajeIniciadoEpoch && !!clienteEnCamino;
   const [tick, setTick] = useState(0);
   const [pendientesHoy, setPendientesHoy] = useState<number | null>(null);
   const [guardandoTurno, setGuardandoTurno] = useState(false);
@@ -88,15 +105,6 @@ export default function HomeRepartidor() {
     );
   };
 
-  const irProximaEntrega = () => {
-    if (!jornadaActiva) {
-      Alert.alert('Turno', 'Iniciá el turno para acceder a las entregas.');
-      return;
-    }
-    irAlPrimerPendiente();
-    router.push('/(repartidor)/en-entrega');
-  };
-
   if (guardandoTurno) {
     return (
       <Screen title="Guardando turno…" subtitle="Aguardá un momento">
@@ -110,6 +118,34 @@ export default function HomeRepartidor() {
 
   return (
     <Screen title={`Hola, ${nombre}`} subtitle="Del Centro Pinturerias · Reparto" scrollable>
+
+      {/* Banner de entrega activa — aparece cuando el repartidor salió del viaje sin marcarlo */}
+      {hayEntregaActiva ? (
+        <Pressable
+          style={({ pressed }) => [styles.bannerEntrega, pressed && styles.bannerPressed]}
+          onPress={() => router.push('/(repartidor)/en-entrega')}
+          accessibilityRole="button"
+        >
+          <View style={styles.bannerLeft}>
+            <View style={styles.bannerDot} />
+            <View style={styles.bannerTextos}>
+              <Text style={styles.bannerTitulo}>Entrega en curso</Text>
+              <Text style={styles.bannerSub} numberOfLines={1}>
+                {clienteEnCamino?.nombre ?? 'Cliente'}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.bannerRight}>
+            <Text style={styles.bannerTimer}>
+              {String(Math.floor(segundosBanner / 60)).padStart(2, '0')}:{String(segundosBanner % 60).padStart(2, '0')}
+            </Text>
+            <View style={styles.bannerBtn}>
+              <Text style={styles.bannerBtnTxt}>REANUDAR</Text>
+              <MaterialIcons name="arrow-forward" size={14} color={COLORS.verdeOscuro} />
+            </View>
+          </View>
+        </Pressable>
+      ) : null}
 
       {/* Tarjeta de estado del turno */}
       <View style={[styles.statusCard, jornadaActiva ? styles.statusActivo : styles.statusPausado]}>
@@ -167,16 +203,6 @@ export default function HomeRepartidor() {
           <Text style={styles.actionSub}>Ver el recorrido del día</Text>
         </Pressable>
 
-        <Pressable
-          style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
-          onPress={irProximaEntrega}
-        >
-          <View style={[styles.actionIcon, { backgroundColor: '#edf7e6' }]}>
-            <MaterialIcons name="local-shipping" size={26} color={COLORS.verdeOscuro} />
-          </View>
-          <Text style={styles.actionLabel}>Próxima entrega</Text>
-          <Text style={styles.actionSub}>Ir al siguiente cliente</Text>
-        </Pressable>
 
         <Pressable
           style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
@@ -200,16 +226,6 @@ export default function HomeRepartidor() {
           <Text style={styles.actionSub}>Ver y editar clientes</Text>
         </Pressable>
 
-        <Pressable
-          style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
-          onPress={() => router.push('/(repartidor)/resumen')}
-        >
-          <View style={[styles.actionIcon, { backgroundColor: '#f0eeff' }]}>
-            <MaterialIcons name="insights" size={26} color="#7c4dff" />
-          </View>
-          <Text style={styles.actionLabel}>Resumen</Text>
-          <Text style={styles.actionSub}>Ver tu progreso del día</Text>
-        </Pressable>
 
         <Pressable
           style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
@@ -349,6 +365,35 @@ const styles = StyleSheet.create({
   rowBottomBtn: {
     flex: 1,
   },
+  // Banner entrega activa
+  bannerEntrega: {
+    backgroundColor: '#e8f5e9',
+    borderRadius: 16,
+    padding: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.verdePrincipal,
+    gap: 10,
+  },
+  bannerPressed: { opacity: 0.85 },
+  bannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  bannerDot: {
+    width: 10, height: 10, borderRadius: 5,
+    backgroundColor: COLORS.verdePrincipal,
+  },
+  bannerTextos: { flex: 1 },
+  bannerTitulo: { fontFamily: 'Poppins_700Bold', fontSize: 13, color: COLORS.verdeOscuro },
+  bannerSub: { fontFamily: 'Poppins_400Regular', fontSize: 12, color: COLORS.grisTexto },
+  bannerRight: { alignItems: 'flex-end', gap: 4 },
+  bannerTimer: { fontFamily: 'Poppins_800ExtraBold', fontSize: 18, color: COLORS.verdeOscuro },
+  bannerBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4,
+  },
+  bannerBtnTxt: { fontFamily: 'Poppins_700Bold', fontSize: 11, color: COLORS.verdeOscuro },
+
   guardandoBox: {
     alignItems: 'center',
     justifyContent: 'center',

@@ -2,11 +2,12 @@ import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 
 import { COLORS } from '@/constants/colors';
-import type { RecorridoPoint, RecorridoStop } from '@/services/adminReportes';
+import type { RecorridoPoint, RecorridoStop, VisitStop } from '@/services/adminReportes';
 
 interface Props {
   points: RecorridoPoint[];
   stops: RecorridoStop[];
+  visitStops?: VisitStop[];
 }
 
 function calcularRegion(points: RecorridoPoint[]) {
@@ -26,7 +27,7 @@ function calcularRegion(points: RecorridoPoint[]) {
   };
 }
 
-export function MapaRecorridoHistorial({ points, stops }: Props) {
+export function MapaRecorridoHistorial({ points, stops, visitStops = [] }: Props) {
   if (points.length === 0) {
     return (
       <View style={styles.empty}>
@@ -56,9 +57,18 @@ export function MapaRecorridoHistorial({ points, stops }: Props) {
         <Marker
           key={`stop-${i}-${s.inicio}`}
           coordinate={{ latitude: s.lat, longitude: s.lng }}
-          title={`Parada ${i + 1}`}
+          title={`Parada GPS ${i + 1}`}
           description={`${Math.round(s.duracionSegundos / 60)} min detenido`}
           pinColor="#f59e0b"
+        />
+      ))}
+      {visitStops.map((v, i) => (
+        <Marker
+          key={`visit-${i}-${v.inicio}`}
+          coordinate={{ latitude: v.lat, longitude: v.lng }}
+          title={v.nombre}
+          description={`${v.estado === 'entregado' ? '✓ Entregado' : '⚠ Problema'} · ${Math.round(v.duracionSegundos / 60)} min`}
+          pinColor={v.estado === 'entregado' ? '#22c55e' : '#f97316'}
         />
       ))}
     </MapView>

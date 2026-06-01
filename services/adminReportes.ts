@@ -42,11 +42,22 @@ export interface RecorridoStop {
   duracionSegundos: number;
 }
 
+export interface VisitStop {
+  lat: number;
+  lng: number;
+  inicio: number;
+  fin: number;
+  duracionSegundos: number;
+  nombre: string;
+  estado: 'entregado' | 'problema';
+}
+
 export interface RecorridoJornadaResponse {
   jornadaId: string;
   repartidorId: string;
   points: RecorridoPoint[];
   stops: RecorridoStop[];
+  visitStops?: VisitStop[];
 }
 
 export interface PedidoJornadaHistorialItem {
