@@ -9,6 +9,7 @@ interface PedidosCalleState {
   ultimaNotificacionPedidoId: string | null;
   agregarPedido: (p: PedidoCalle) => void;
   marcarEstado: (id: string, estado: PedidoCalle['estado']) => void;
+  actualizarNota: (id: string, notas: string | undefined) => void;
   reemplazarPedidosDesdeRemoto: (list: PedidoCalle[]) => void;
   setUltimaNotificacionPedidoId: (id: string | null) => void;
 }
@@ -25,6 +26,10 @@ export const usePedidosCalleStore = create<PedidosCalleState>()(
       marcarEstado: (id, estado) =>
         set((s) => ({
           pedidos: s.pedidos.map((x) => (x.id === id ? { ...x, estado } : x)),
+        })),
+      actualizarNota: (id, notas) =>
+        set((s) => ({
+          pedidos: s.pedidos.map((x) => (x.id === id ? { ...x, notas } : x)),
         })),
       reemplazarPedidosDesdeRemoto: (list) => {
         const map = new Map(list.map((p) => [p.id, p]));

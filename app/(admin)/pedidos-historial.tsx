@@ -12,6 +12,7 @@ const ESTADOS: { label: string; value: EstadoPedidoCalle | 'todos' }[] = [
   { label: 'Todos', value: 'todos' },
   { label: 'Pendiente', value: 'pendiente' },
   { label: 'Visto', value: 'visto' },
+  { label: 'Nota', value: 'nota' },
   { label: 'Armado', value: 'armado' },
   { label: 'Retirado', value: 'retirado' },
   { label: 'Cancelado', value: 'cancelado' },
@@ -20,6 +21,7 @@ const ESTADOS: { label: string; value: EstadoPedidoCalle | 'todos' }[] = [
 const ESTADO_COLOR: Record<string, string> = {
   pendiente: '#f59e0b',
   visto: '#3b82f6',
+  nota: '#f97316',
   armado: '#8b5cf6',
   retirado: '#22c55e',
   cancelado: '#ef4444',

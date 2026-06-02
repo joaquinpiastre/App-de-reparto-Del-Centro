@@ -22,15 +22,19 @@ const pedidoSchema = z.object({
   total: z.number(),
   notas: z.string().optional(),
   clientesMismaCalle: z.array(z.object({ nombre: z.string(), direccion: z.string() })).default([]),
-  estado: z.enum(['pendiente', 'visto', 'armado', 'retirado', 'cancelado']).default('pendiente'),
+  estado: z.enum(['pendiente', 'visto', 'nota', 'armado', 'retirado', 'cancelado']).default('pendiente'),
   creadoEn: z.number().int().positive(),
   clienteId: z.string().optional(),
   clienteNombre: z.string().optional(),
 });
 
 const estadoSchema = z.object({
-  estado: z.enum(['pendiente', 'visto', 'armado', 'retirado', 'cancelado']),
+  estado: z.enum(['pendiente', 'visto', 'nota', 'armado', 'retirado', 'cancelado']),
   nota: z.string().optional(),
+});
+
+const notaSchema = z.object({
+  notas: z.string(),
 });
 
 const cerrarTurnoSchema = z.object({
@@ -192,5 +196,18 @@ pedidosCalleRouter.patch('/pedidos-calle/:id/estado', requireAuth, async (req, r
   } else {
     await pool.query(`update pedidos_calle set estado = $2 where id = $1`, [req.params.id, estado]);
   }
+  res.json({ ok: true });
+});
+
+pedidosCalleRouter.patch('/pedidos-calle/:id/nota', requireAuth, async (req, res) => {
+  const parsed = notaSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Payload inválido.' });
+    return;
+  }
+  await pool.query(
+    `update pedidos_calle set notas = $2 where id = $1`,
+    [req.params.id, parsed.data.notas || null]
+  );
   res.json({ ok: true });
 });

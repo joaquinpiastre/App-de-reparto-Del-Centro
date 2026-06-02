@@ -36,6 +36,15 @@ export async function actualizarEstadoPedidoCalle(
   });
 }
 
+export async function actualizarNotaPedidoCalle(id: string, notas: string): Promise<void> {
+  usePedidosCalleStore.getState().actualizarNota(id, notas || undefined);
+  if (!API_ENABLED) return;
+  await apiRequest(`/pedidos-calle/${id}/nota`, {
+    method: 'PATCH',
+    body: JSON.stringify({ notas }),
+  });
+}
+
 export async function obtenerPedidosCalleFinalizados(): Promise<PedidoCalle[]> {
   if (!API_ENABLED) {
     return usePedidosCalleStore.getState().pedidos.filter(

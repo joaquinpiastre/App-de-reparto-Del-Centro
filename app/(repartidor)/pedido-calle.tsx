@@ -3,6 +3,7 @@ import {
   Alert,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -81,17 +82,15 @@ export default function PedidoCalleScreen() {
   const sugerencias = useMemo(() => {
     const q = descManual.trim().toLowerCase();
     if (q.length < 2) return [];
-    return catalogo
-      .filter((p) => p.descripcion.toLowerCase().includes(q))
-      .slice(0, 8);
+    return catalogo.filter((p) => p.descripcion.toLowerCase().includes(q));
   }, [catalogo, descManual]);
 
   const sugerenciasCliente = useMemo(() => {
     const q = busquedaCliente.trim().toLowerCase();
     if (q.length < 2) return [];
-    return clientes
-      .filter((c) => c.nombre.toLowerCase().includes(q) || c.direccion.toLowerCase().includes(q))
-      .slice(0, 8);
+    return clientes.filter(
+      (c) => c.nombre.toLowerCase().includes(q) || c.direccion.toLowerCase().includes(q)
+    );
   }, [clientes, busquedaCliente]);
 
   const seleccionarCliente = (c: ClienteAdminCatalogo) => {
@@ -247,21 +246,28 @@ export default function PedidoCalleScreen() {
             />
             {mostrarSugerenciasCliente && sugerenciasCliente.length > 0 && (
               <View style={styles.sugerenciasBox}>
-                {sugerenciasCliente.map((c) => (
-                  <Pressable
-                    key={c.id}
-                    style={({ pressed }) => [styles.sugerenciaItem, pressed && styles.sugerenciaPressed]}
-                    onPress={() => seleccionarCliente(c)}
-                  >
-                    <View style={styles.clienteSugerenciaInfo}>
-                      <Text style={styles.sugerenciaNombre} numberOfLines={1}>{c.nombre}</Text>
-                      <Text style={styles.clienteSugerenciaDireccion} numberOfLines={1}>{c.direccion}</Text>
-                    </View>
-                    <Text style={styles.clienteSugerenciaTipo}>
-                      {c.tipo === 'taller' ? 'Taller' : 'Cliente'}
-                    </Text>
-                  </Pressable>
-                ))}
+                <ScrollView
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                  style={styles.sugerenciasScroll}
+                  showsVerticalScrollIndicator
+                >
+                  {sugerenciasCliente.map((c) => (
+                    <Pressable
+                      key={c.id}
+                      style={({ pressed }) => [styles.sugerenciaItem, pressed && styles.sugerenciaPressed]}
+                      onPress={() => seleccionarCliente(c)}
+                    >
+                      <View style={styles.clienteSugerenciaInfo}>
+                        <Text style={styles.sugerenciaNombre} numberOfLines={1}>{c.nombre}</Text>
+                        <Text style={styles.clienteSugerenciaDireccion} numberOfLines={1}>{c.direccion}</Text>
+                      </View>
+                      <Text style={styles.clienteSugerenciaTipo}>
+                        {c.tipo === 'taller' ? 'Taller' : 'Cliente'}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
               </View>
             )}
           </>
@@ -304,16 +310,26 @@ export default function PedidoCalleScreen() {
           />
           {mostrarSugerencias && sugerencias.length > 0 && (
             <View style={styles.sugerenciasBox}>
-              {sugerencias.map((p) => (
-                <Pressable
-                  key={p.codigo}
-                  style={({ pressed }) => [styles.sugerenciaItem, pressed && styles.sugerenciaPressed]}
-                  onPress={() => seleccionarProducto(p)}
-                >
-                  <Text style={styles.sugerenciaNombre} numberOfLines={2}>{p.descripcion}</Text>
-                  <Text style={styles.sugerenciaPrecio}>${fmtMoney(p.precioUnitario)}</Text>
-                </Pressable>
-              ))}
+              <Text style={styles.sugerenciasConteo}>
+                {sugerencias.length} resultado{sugerencias.length !== 1 ? 's' : ''}
+              </Text>
+              <ScrollView
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+                style={styles.sugerenciasScroll}
+                showsVerticalScrollIndicator
+              >
+                {sugerencias.map((p) => (
+                  <Pressable
+                    key={p.codigo}
+                    style={({ pressed }) => [styles.sugerenciaItem, pressed && styles.sugerenciaPressed]}
+                    onPress={() => seleccionarProducto(p)}
+                  >
+                    <Text style={styles.sugerenciaNombre} numberOfLines={2}>{p.descripcion}</Text>
+                    <Text style={styles.sugerenciaPrecio}>${fmtMoney(p.precioUnitario)}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
             </View>
           )}
 
@@ -574,7 +590,17 @@ const styles = StyleSheet.create({
     borderColor: COLORS.verdePrincipal,
     borderRadius: 12,
     marginTop: 4,
-    overflow: 'hidden',
+  },
+  sugerenciasConteo: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 12,
+    color: COLORS.grisSecundario,
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  sugerenciasScroll: {
+    maxHeight: 280,
   },
   sugerenciaItem: {
     flexDirection: 'row',

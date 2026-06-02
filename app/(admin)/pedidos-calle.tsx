@@ -5,7 +5,7 @@ import * as Print from 'expo-print';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
-import { actualizarEstadoPedidoCalle, suscribirPedidosCalle } from '@/services/pedidosCalle';
+import { actualizarEstadoPedidoCalle, actualizarNotaPedidoCalle, suscribirPedidosCalle } from '@/services/pedidosCalle';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
 import type { EstadoPedidoCalle, PedidoCalle } from '@/types';
 
@@ -158,12 +158,12 @@ export default function PedidosCalleAdmin() {
   );
 
   const esEstadoFinal = (e: EstadoPedidoCalle) => e === 'retirado' || e === 'cancelado';
-  const [notaTexto, setNotaTexto] = useState('');
-  const [pedidoNotaId, setPedidoNotaId] = useState<string | null>(null);
+  const [notaEditandoId, setNotaEditandoId] = useState<string | null>(null);
+  const [notaTextoDraft, setNotaTextoDraft] = useState('');
 
-  const cambiarEstado = async (pedido: PedidoCalle, estado: PedidoCalle['estado'], nota?: string) => {
+  const cambiarEstado = async (pedido: PedidoCalle, estado: PedidoCalle['estado']) => {
     try {
-      await actualizarEstadoPedidoCalle(pedido.id, estado, nota);
+      await actualizarEstadoPedidoCalle(pedido.id, estado);
     } catch (e) {
       if (Platform.OS === 'web') {
         globalThis.alert?.(
@@ -175,20 +175,24 @@ export default function PedidosCalleAdmin() {
     }
   };
 
-  const abrirDialogoNota = (pedido: PedidoCalle) => {
-    if (Platform.OS === 'web') {
-      const nota = globalThis.prompt?.('Ingresá una nota para este pedido (opcional):') ?? '';
-      void cambiarEstado(pedido, 'visto', nota || undefined);
-      return;
-    }
-    setPedidoNotaId(pedido.id);
-    setNotaTexto('');
+  const abrirEditarNota = (pedido: PedidoCalle) => {
+    setNotaEditandoId(pedido.id);
+    setNotaTextoDraft(pedido.notas ?? '');
   };
 
-  const confirmarNota = (pedido: PedidoCalle) => {
-    setPedidoNotaId(null);
-    void cambiarEstado(pedido, 'visto', notaTexto.trim() || undefined);
-    setNotaTexto('');
+  const guardarNota = async (pedido: PedidoCalle) => {
+    setNotaEditandoId(null);
+    const texto = notaTextoDraft.trim();
+    setNotaTextoDraft('');
+    try {
+      await actualizarNotaPedidoCalle(pedido.id, texto);
+    } catch (e) {
+      if (Platform.OS === 'web') {
+        globalThis.alert?.(`No se pudo guardar la nota: ${e instanceof Error ? e.message : e}`);
+      } else {
+        Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo guardar la nota.');
+      }
+    }
   };
 
   return (
@@ -251,10 +255,6 @@ export default function PedidosCalleAdmin() {
               </View>
             ) : null}
 
-            {p.notas ? (
-              <Text style={styles.notas}>📝 Nota: {p.notas}</Text>
-            ) : null}
-
             {/* Clientes en la misma calle */}
             {p.clientesMismaCalle && p.clientesMismaCalle.length > 0 ? (
               <View style={styles.mismaCalleBox}>
@@ -267,6 +267,35 @@ export default function PedidosCalleAdmin() {
               </View>
             ) : null}
 
+            {/* Sección de nota de texto */}
+            <View style={styles.notaSection}>
+              <Text style={styles.notaSectionLabel}>Nota</Text>
+              {notaEditandoId === p.id ? (
+                <View style={styles.notaEditBox}>
+                  <TextInput
+                    style={styles.notaEditInput}
+                    placeholder="Escribí una nota..."
+                    placeholderTextColor="#aaa"
+                    value={notaTextoDraft}
+                    onChangeText={setNotaTextoDraft}
+                    multiline
+                    maxLength={300}
+                    autoFocus
+                  />
+                  <View style={styles.actions}>
+                    <Button label="GUARDAR" onPress={() => void guardarNota(p)} />
+                    <Button label="CANCELAR" variant="secondary" onPress={() => setNotaEditandoId(null)} />
+                  </View>
+                </View>
+              ) : (
+                <Pressable onPress={() => abrirEditarNota(p)} style={styles.notaDisplayRow}>
+                  <Text style={p.notas ? styles.notaTexto : styles.notaVacia}>
+                    {p.notas ?? 'Toca para agregar...'}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+
             {/* Botón imprimir — siempre visible */}
             <Pressable
               style={({ pressed }) => [styles.imprimirBtn, pressed && styles.imprimirBtnPressed]}
@@ -277,34 +306,13 @@ export default function PedidosCalleAdmin() {
               <Text style={styles.imprimirBtnTxt}>🖨️  IMPRIMIR PEDIDO</Text>
             </Pressable>
 
-            {/* Diálogo de nota (solo en la card seleccionada) */}
-            {pedidoNotaId === p.id ? (
-              <View style={styles.notaDialog}>
-                <Text style={styles.notaDialogLabel}>Nota del pedido (opcional)</Text>
-                <TextInput
-                  style={styles.notaDialogInput}
-                  placeholder="Ej: pendiente de confirmación, llamar al cliente..."
-                  placeholderTextColor="#aaa"
-                  value={notaTexto}
-                  onChangeText={setNotaTexto}
-                  multiline
-                  maxLength={300}
-                  autoFocus
-                />
-                <View style={styles.actions}>
-                  <Button label="CONFIRMAR" onPress={() => confirmarNota(p)} />
-                  <Button label="CANCELAR" variant="secondary" onPress={() => setPedidoNotaId(null)} />
-                </View>
-              </View>
-            ) : null}
-
             {/* Acciones de estado */}
             {!esEstadoFinal(p.estado) ? (
               <View style={[styles.actions, styles.actionsWrap]}>
                 <Button
                   label="NOTA DEL PEDIDO"
                   variant="secondary"
-                  onPress={() => abrirDialogoNota(p)}
+                  onPress={() => void cambiarEstado(p, 'nota')}
                 />
                 <Button
                   label="ARMADO"
@@ -405,10 +413,48 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
 
-  notas: {
+  // Sección de nota de texto
+  notaSection: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 10,
+    padding: 10,
+    gap: 4,
+  },
+  notaSectionLabel: {
     fontFamily: 'Poppins_600SemiBold',
-    color: COLORS.verdeOscuro,
+    fontSize: 12,
+    color: COLORS.grisSecundario,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  notaDisplayRow: {
+    paddingVertical: 2,
+  },
+  notaTexto: {
+    fontFamily: 'Poppins_400Regular',
     fontSize: 13,
+    color: COLORS.grisTexto,
+  },
+  notaVacia: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    color: '#bbb',
+    fontStyle: 'italic',
+  },
+  notaEditBox: {
+    gap: 8,
+  },
+  notaEditInput: {
+    borderWidth: 1,
+    borderColor: '#c0d8f5',
+    borderRadius: 10,
+    padding: 10,
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    minHeight: 64,
+    textAlignVertical: 'top',
+    backgroundColor: '#fff',
   },
 
   // Imprimir
@@ -471,28 +517,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_400Regular',
     fontSize: 13,
     color: COLORS.grisSecundario,
-  },
-
-  // Diálogo de nota
-  notaDialog: {
-    backgroundColor: '#f0f7ff',
-    borderRadius: 12,
-    padding: 12,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#c0d8f5',
-  },
-  notaDialogLabel: { fontFamily: 'Poppins_600SemiBold', fontSize: 13, color: COLORS.grisTexto },
-  notaDialogInput: {
-    borderWidth: 1,
-    borderColor: '#c0d8f5',
-    borderRadius: 10,
-    padding: 10,
-    fontFamily: 'Poppins_400Regular',
-    fontSize: 13,
-    minHeight: 64,
-    textAlignVertical: 'top',
-    backgroundColor: '#fff',
   },
 
   // Acciones
