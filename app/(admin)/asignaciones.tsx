@@ -214,8 +214,9 @@ export default function Asignaciones() {
       try {
         const lista = await obtenerClientesCatalogo();
         setCatalogo(lista);
-      } catch (e) {
-        console.warn('obtenerClientesCatalogo:', e);
+      } catch {
+        Alert.alert('Error de conexión', 'No se pudo cargar el catálogo. Verificá tu conexión.');
+        return;
       }
     }
     setSeleccionadosRutaFija(new Set(rutaFija.map((c) => c.id)));
@@ -678,14 +679,21 @@ export default function Asignaciones() {
           )}
 
           <FlatList
-            data={catalogo.filter((c) => {
-              const q = busquedaRutaFija.toLowerCase();
-              return (
-                c.nombre.toLowerCase().includes(q) ||
-                c.direccion.toLowerCase().includes(q) ||
-                c.tipo.toLowerCase().includes(q)
-              );
-            })}
+            data={catalogo
+              .filter((c) => {
+                const q = busquedaRutaFija.toLowerCase();
+                return (
+                  c.nombre.toLowerCase().includes(q) ||
+                  c.direccion.toLowerCase().includes(q) ||
+                  c.tipo.toLowerCase().includes(q)
+                );
+              })
+              // Los ya seleccionados (en la ruta) aparecen primero
+              .sort((a, b) => {
+                const aEnRuta = seleccionadosRutaFija.has(a.id) ? 0 : 1;
+                const bEnRuta = seleccionadosRutaFija.has(b.id) ? 0 : 1;
+                return aEnRuta - bEnRuta;
+              })}
             keyExtractor={(item) => item.id}
             style={styles.modalList}
             renderItem={({ item }) => {

@@ -35,7 +35,7 @@ rutasFijasRouter.get('/rutas-fijas/:repartidorId', requireAuth, async (req, res)
   }
   await ensureTable();
   const { rows } = await pool.query(
-    `SELECT rf.cliente_id AS "clienteId", rf.orden,
+    `SELECT rf.cliente_id AS id, rf.orden,
             c.nombre, c.direccion, c.tipo, c.pedido
        FROM rutas_fijas rf
        JOIN clientes c ON c.id = rf.cliente_id
