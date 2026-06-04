@@ -106,6 +106,9 @@ export default function Asignaciones() {
   const [dragging, setDragging] = useState<{ id: string; fromIndex: number } | null>(null);
   const [insertIndex, setInsertIndex] = useState(-1);
 
+  // IDs de clientes que ya estaban asignados cuando se abrió el modal (para calcular diff al guardar)
+  const clientesAsignadosRef = useRef<Set<string>>(new Set());
+
   // Refs estables para los gesture callbacks (evitan closures viejas)
   const localOrderRef = useRef<Asignacion[]>([]);
   const listContainerRef = useRef<View>(null);
@@ -333,16 +336,21 @@ export default function Asignaciones() {
   }, [cargarAsignaciones]);
 
   const abrirModal = async () => {
-    setSeleccionados(new Set());
     setBusqueda('');
+    // Cargar catálogo si todavía no se cargó
     if (catalogo.length === 0) {
       try {
         const lista = await obtenerClientesCatalogo();
         setCatalogo(lista);
       } catch (e) {
-        console.warn('obtenerClientesCatalogo:', e);
+        Alert.alert('Error de conexión', 'No se pudo cargar el catálogo de clientes. Verificá tu conexión e intentá de nuevo.');
+        return;
       }
     }
+    // Pre-seleccionar los clientes que ya están en la ruta de hoy
+    const yaAsignados = new Set(asignaciones.map((a) => a.clienteId));
+    clientesAsignadosRef.current = yaAsignados;
+    setSeleccionados(new Set(yaAsignados));
     setModalVisible(true);
   };
 
@@ -356,14 +364,31 @@ export default function Asignaciones() {
   };
 
   const confirmarAgregado = async () => {
-    if (!repSeleccionado || seleccionados.size === 0) return;
+    if (!repSeleccionado) return;
     setGuardando(true);
     try {
-      await crearAsignacionesBulk(repSeleccionado.id, [...seleccionados], fecha);
+      const original = clientesAsignadosRef.current;
+
+      // Clientes nuevos: estaban seleccionados pero no asignados antes
+      const aAgregar = [...seleccionados].filter((id) => !original.has(id));
+
+      // Clientes quitados: estaban asignados pero ahora desmarcados
+      const aQuitar = [...original].filter((id) => !seleccionados.has(id));
+
+      if (aAgregar.length > 0) {
+        await crearAsignacionesBulk(repSeleccionado.id, aAgregar, fecha);
+      }
+
+      // Eliminar todas las asignaciones del día para los clientes desmarcados
+      if (aQuitar.length > 0) {
+        const eliminar = asignaciones.filter((a) => aQuitar.includes(a.clienteId));
+        await Promise.all(eliminar.map((a) => eliminarAsignacion(a.id)));
+      }
+
       setModalVisible(false);
       await cargarAsignaciones();
     } catch (e) {
-      console.warn('crearAsignacionesBulk:', e);
+      Alert.alert('Error al guardar', e instanceof Error ? e.message : 'No se pudieron guardar los cambios. Verificá tu conexión.');
     } finally {
       setGuardando(false);
     }
@@ -613,9 +638,9 @@ export default function Asignaciones() {
 
       {repSeleccionado && (
         <Button
-          label="Agregar clientes"
+          label="Editar clientes del día"
           onPress={() => void abrirModal()}
-          iconLeft={<MaterialIcons name="add" size={18} color="#fff" />}
+          iconLeft={<MaterialIcons name="edit" size={18} color="#fff" />}
         />
       )}
 
@@ -708,7 +733,7 @@ export default function Asignaciones() {
         </View>
       </Modal>
 
-      {/* Modal selector de clientes */}
+      {/* Modal editor de clientes del día */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -716,11 +741,16 @@ export default function Asignaciones() {
       >
         <View style={styles.modal}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Seleccioná clientes</Text>
+            <Text style={styles.modalTitle}>
+              Clientes del día — {repSeleccionado?.nombre}
+            </Text>
             <Pressable onPress={() => setModalVisible(false)}>
               <MaterialIcons name="close" size={24} color={COLORS.grisTexto} />
             </Pressable>
           </View>
+          <Text style={styles.rutaFijaModalSub}>
+            Los marcados estarán en la ruta de hoy. Desmarcá para quitarlos.
+          </Text>
 
           <View style={styles.searchWrap}>
             <MaterialIcons name="search" size={20} color={COLORS.grisSecundario} style={styles.searchIcon} />
@@ -734,9 +764,7 @@ export default function Asignaciones() {
             />
           </View>
 
-          {seleccionados.size > 0 && (
-            <Text style={styles.selCount}>{seleccionados.size} seleccionado(s)</Text>
-          )}
+          <Text style={styles.selCount}>{seleccionados.size} en la ruta de hoy</Text>
 
           <FlatList
             data={catalogoFiltrado}
@@ -777,7 +805,7 @@ export default function Asignaciones() {
 
           <View style={styles.modalFooter}>
             <Button
-              label={guardando ? 'Guardando...' : `Asignar ${seleccionados.size > 0 ? `(${seleccionados.size})` : ''}`}
+              label={guardando ? 'Guardando...' : `Guardar ruta del día (${seleccionados.size})`}
               onPress={() => void confirmarAgregado()}
               loading={guardando}
               variant="primary"
