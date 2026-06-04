@@ -7,11 +7,65 @@ import { actualizarEstadoAsignacion, obtenerAsignaciones } from '@/services/asig
 import { registrarCierreJornadaApi } from '@/services/entregasApi';
 import { detenerGPS, iniciarGPS, iniciarGPSPresencia } from '@/services/gps';
 import { cerrarTurnoPedidosCalle } from '@/services/pedidosCalle';
+import { API_ENABLED } from '@/constants/api';
 import type { Asignacion, Cliente, Coordenadas, EstadoEntrega, Usuario } from '@/types';
 
 import { useHistorialStore } from './useHistorialStore';
 
 const BASE_COORDENADAS = { lat: -34.6177, lng: -68.3301 };
+
+// ─── Cola de sincronización offline ──────────────────────────────────────────
+// Cuando no hay red al confirmar una visita, se encola para reintentar después.
+const SYNC_KEY = 'visitas_pendientes_sync';
+interface PendienteSync {
+  asigId: string;
+  estado: EstadoEntrega;
+  horaSalidaMs?: number;
+  jornadaId?: string;
+  notasRepartidor?: string;
+}
+
+async function encolarSincronizacion(entry: PendienteSync): Promise<void> {
+  try {
+    const str = await AsyncStorage.getItem(SYNC_KEY);
+    const lista: PendienteSync[] = str ? (JSON.parse(str) as PendienteSync[]) : [];
+    // Reemplazar si ya hay una entrada para el mismo asigId (evita duplicados)
+    const filtrada = lista.filter((p) => p.asigId !== entry.asigId);
+    filtrada.push(entry);
+    await AsyncStorage.setItem(SYNC_KEY, JSON.stringify(filtrada));
+  } catch {
+    // No crítico — la visita ya está guardada localmente
+  }
+}
+
+export async function reintentarSincronizaciones(): Promise<void> {
+  if (!API_ENABLED) return;
+  try {
+    const str = await AsyncStorage.getItem(SYNC_KEY);
+    if (!str) return;
+    const lista = JSON.parse(str) as PendienteSync[];
+    if (!lista.length) return;
+    const sinConexion: PendienteSync[] = [];
+    for (const p of lista) {
+      try {
+        await actualizarEstadoAsignacion(p.asigId, p.estado, {
+          horaSalidaMs: p.horaSalidaMs,
+          jornadaId: p.jornadaId,
+          notasRepartidor: p.notasRepartidor,
+        });
+      } catch {
+        sinConexion.push(p); // Aún sin red, guardar para el próximo intento
+      }
+    }
+    if (sinConexion.length === 0) {
+      await AsyncStorage.removeItem(SYNC_KEY);
+    } else {
+      await AsyncStorage.setItem(SYNC_KEY, JSON.stringify(sinConexion));
+    }
+  } catch {
+    // Silencioso
+  }
+}
 
 function hashToOffset(seed: string): number {
   let hash = 0;
@@ -224,6 +278,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
     // Revertir a presencia: el admin sigue viendo al repartidor aunque terminó el turno
     await detenerGPS(true).catch((err) => console.warn('detenerGPS:', err));
 
+    // Reintentar sincronizaciones que quedaron pendientes sin red durante el turno
+    await reintentarSincronizaciones().catch(() => {});
+
     // Sincronizar con backend — cada llamada en su propio try-catch para que un fallo
     // en una no impida que las demás se ejecuten
     if (payload) {
@@ -267,6 +324,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const [[, jornadaActivaId], [, jornadaEpochStr], [, viajeEpochStr]] =
       await AsyncStorage.multiGet(['jornada_activa_id', 'jornada_inicio_epoch', 'viaje_epoch']);
     if (!jornadaActivaId || !jornadaEpochStr) return;
+    // Intentar sincronizar visitas que quedaron pendientes sin red
+    void reintentarSincronizaciones();
     try {
       const asignaciones = await obtenerAsignaciones({ repartidorId: usuario.id });
       const activas = asignaciones
@@ -351,6 +410,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     } = get();
     const c = clientesDelDia[clienteActualIndex];
     if (!c) return;
+    const horaSalidaMs = Date.now();
     get().actualizarCliente(c.id, {
       estado: 'entregado',
       fotoEntregaUri: fotoPendienteUri ?? c.fotoEntregaUri,
@@ -360,11 +420,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
     });
     void actualizarEstadoAsignacion(c.id, 'entregado', {
       notasRepartidor: opts?.notasRepartidor,
-      horaSalidaMs: Date.now(),
+      horaSalidaMs,
       jornadaId: jornadaId ?? undefined,
-    }).catch((err) => {
-      const msg = err instanceof Error ? err.message : 'No se pudo actualizar la visita.';
-      Alert.alert('Visita no sincronizada', msg);
+    }).catch(async () => {
+      // Sin red: encolar para reintentar automáticamente cuando haya conexión
+      await encolarSincronizacion({
+        asigId: c.id,
+        estado: 'entregado',
+        horaSalidaMs,
+        jornadaId: jornadaId ?? undefined,
+        notasRepartidor: opts?.notasRepartidor,
+      });
+      Alert.alert(
+        'Sin conexión',
+        'La visita quedó guardada en el dispositivo. Se sincronizará automáticamente cuando haya red.'
+      );
     });
     set({ fotoPendienteUri: null, viajeIniciadoEpoch: null });
     void AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index']);
@@ -381,9 +451,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
     void actualizarEstadoAsignacion(c.id, 'problema', {
       notasRepartidor: nota,
       jornadaId: jornadaId ?? undefined,
-    }).catch((err) => {
-      const msg = err instanceof Error ? err.message : 'No se pudo reportar el problema.';
-      Alert.alert('Incidencia no sincronizada', msg);
+    }).catch(async () => {
+      await encolarSincronizacion({
+        asigId: c.id,
+        estado: 'problema',
+        jornadaId: jornadaId ?? undefined,
+        notasRepartidor: nota,
+      });
+      Alert.alert(
+        'Sin conexión',
+        'El problema quedó guardado en el dispositivo. Se sincronizará cuando haya red.'
+      );
     });
     get().siguienteCliente();
   },

@@ -19,6 +19,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { inicializarNotificaciones } from '@/services/notificaciones';
 import { restaurarSesionApi } from '@/services/authApi';
 import { enviarPosicionActual, reanudarGPSSiNecesario } from '@/services/gps';
+import { reintentarSincronizaciones } from '@/store/useAppStore';
 import { useAppStore } from '@/store/useAppStore';
 
 /**
@@ -48,8 +49,9 @@ export default function RootLayout() {
   useEffect(() => {
     if (Platform.OS === 'web') return;
     const alVolver = () => {
-      void enviarPosicionActual();      // posición inmediata
-      void reanudarGPSSiNecesario();   // reinicio del task de fondo
+      void enviarPosicionActual();        // posición inmediata
+      void reanudarGPSSiNecesario();     // reinicio del task de fondo
+      void reintentarSincronizaciones(); // reintentar visitas que quedaron sin internet
     };
     const sub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') alVolver();
