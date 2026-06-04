@@ -111,7 +111,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setEntregaTimerSegundos: (n) => set({ entregaTimerSegundos: n }),
   iniciarViajeACliente: (index) => {
     const epoch = Date.now();
+    const { clientesDelDia } = get();
+    const cliente = clientesDelDia[index];
     set({ clienteActualIndex: index, viajeIniciadoEpoch: epoch });
+    // Marcar en_camino aquí (cuando el rep presiona VISITAR) en lugar de en useFocusEffect,
+    // para que el estado sea siempre una elección explícita del repartidor.
+    if (cliente) get().marcarClienteEstado(cliente.id, 'en_camino');
     void AsyncStorage.setItem('viaje_epoch', String(epoch));
     void AsyncStorage.setItem('viaje_index', String(index));
   },
@@ -259,29 +264,55 @@ export const useAppStore = create<AppStore>((set, get) => ({
   restaurarJornada: async () => {
     const { usuario } = get();
     if (!usuario) return;
-    const [[, jornadaActivaId], [, jornadaEpochStr]] = await AsyncStorage.multiGet([
-      'jornada_activa_id',
-      'jornada_inicio_epoch',
-    ]);
+    const [[, jornadaActivaId], [, jornadaEpochStr], [, viajeEpochStr]] =
+      await AsyncStorage.multiGet(['jornada_activa_id', 'jornada_inicio_epoch', 'viaje_epoch']);
     if (!jornadaActivaId || !jornadaEpochStr) return;
     try {
-      // Recargar solo los clientes que aún no fueron visitados
-      const clientes = await cargarClientesDesdeAsignaciones(usuario);
-      const optimizados = clientes.length > 0 ? optimizarRuta(clientes) : [];
-      // Limpiar datos de viaje porque el índice ya no aplica a la nueva lista
+      const asignaciones = await obtenerAsignaciones({ repartidorId: usuario.id });
+      const activas = asignaciones
+        .filter((a) => a.estado === 'pendiente' || a.estado === 'en_camino')
+        .sort((a, b) => a.orden - b.orden);
+
+      if (activas.length === 0) {
+        // Jornada ya finalizada → limpiar claves
+        await AsyncStorage.multiRemove(['jornada_activa_id', 'jornada_inicio_epoch', 'viaje_epoch', 'viaje_index']);
+        return;
+      }
+
+      // Preservar el estado en_camino: el rep estaba yendo a ese cliente cuando murió la app
+      const clientes = optimizarRuta(
+        activas.map((a, idx) => {
+          const c = asignacionToCliente(a, idx);
+          return a.estado === 'en_camino' ? { ...c, estado: 'en_camino' as const } : c;
+        })
+      );
+
+      // Encontrar el cliente en_camino para restaurar el índice y el timer
+      const enCaminoIdx = clientes.findIndex((c) => c.estado === 'en_camino');
+      const clienteActualIndex = enCaminoIdx >= 0 ? enCaminoIdx : 0;
+
+      let viajeIniciadoEpoch: number | null = null;
+      if (enCaminoIdx >= 0) {
+        // Preferir el epoch guardado (momento en que salió); fallback: hora_llegada del backend
+        const asigEnCamino = activas.find((a) => a.id === clientes[enCaminoIdx].id);
+        viajeIniciadoEpoch = viajeEpochStr
+          ? Number(viajeEpochStr)
+          : (asigEnCamino?.horaLlegadaMs ?? null);
+      }
+
       await AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index']);
       set({
         jornadaActiva: true,
         gpsActivo: true,
         jornadaId: jornadaActivaId,
         jornadaInicioEpoch: Number(jornadaEpochStr),
-        clientesDelDia: optimizados,
-        clienteActualIndex: 0,
-        viajeIniciadoEpoch: null,
+        clientesDelDia: clientes,
+        clienteActualIndex,
+        viajeIniciadoEpoch,
       });
     } catch {
-      // Sin conexión — el repartidor verá el botón INICIAR TURNO normalmente.
-      // No limpiar las claves de AsyncStorage para reintentar en el próximo arranque.
+      // Sin conexión — el rep verá el botón INICIAR TURNO normalmente.
+      // No limpiar las claves para reintentar en el próximo arranque.
     }
   },
 

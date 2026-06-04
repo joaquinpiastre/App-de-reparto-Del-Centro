@@ -38,7 +38,6 @@ export default function EnEntrega() {
     clienteActualIndex,
     jornadaActiva,
     jornadaId,
-    marcarClienteEstado,
     completarVisitaActual,
     reportarProblemaActual,
     setEntregaTimerSegundos,
@@ -54,19 +53,22 @@ export default function EnEntrega() {
 
   useFocusEffect(
     useCallback(() => {
-      if (cliente?.estado === 'pendiente') {
+      // Solo registrar hora_llegada en backend para el historial.
+      // El estado en_camino ya se marcó en el store cuando el repartidor presionó "VISITAR".
+      if (
+        cliente &&
+        (cliente.estado === 'pendiente' || cliente.estado === 'en_camino') &&
+        llegadaRegistradaRef.current !== cliente.id
+      ) {
         const ahora = Date.now();
-        marcarClienteEstado(cliente.id, 'en_camino');
-        if (llegadaRegistradaRef.current !== cliente.id) {
-          llegadaRegistradaRef.current = cliente.id;
-          void actualizarEstadoAsignacion(cliente.id, 'en_camino', {
-            horaLlegadaMs: ahora,
-            jornadaId: jornadaId ?? undefined,
-          }).catch(() => {});
-        }
+        llegadaRegistradaRef.current = cliente.id;
+        void actualizarEstadoAsignacion(cliente.id, 'en_camino', {
+          horaLlegadaMs: ahora,
+          jornadaId: jornadaId ?? undefined,
+        }).catch(() => {});
       }
       setNotas('');
-    }, [cliente?.id, cliente?.estado, jornadaId, marcarClienteEstado])
+    }, [cliente?.id, cliente?.estado, jornadaId])
   );
 
   if (!jornadaActiva || !cliente) {
