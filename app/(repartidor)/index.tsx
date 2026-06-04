@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -18,7 +18,6 @@ export default function HomeRepartidor() {
     jornadaActiva,
     jornadaInicioEpoch,
     iniciarJornada,
-    pausarJornada,
     cerrarJornada,
     resetSesion,
     usuario,
@@ -80,29 +79,13 @@ export default function HomeRepartidor() {
   };
 
   const terminarTurno = () => {
-    if (!jornadaActiva) {
-      Alert.alert('Sin turno activo', 'Iniciá un turno primero para poder terminarlo.');
-      return;
-    }
-    Alert.alert(
-      'Terminar turno',
-      '¿Guardar y finalizar la jornada? Se guardará todo en el historial.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Terminar',
-          onPress: () => {
-            if (cerrando.current) return;
-            cerrando.current = true;
-            setGuardandoTurno(true);
-            void cerrarJornada().finally(() => {
-              cerrando.current = false;
-              setGuardandoTurno(false);
-            });
-          },
-        },
-      ]
-    );
+    if (!jornadaActiva || cerrando.current) return;
+    cerrando.current = true;
+    setGuardandoTurno(true);
+    void cerrarJornada().finally(() => {
+      cerrando.current = false;
+      setGuardandoTurno(false);
+    });
   };
 
   if (guardandoTurno) {
@@ -183,12 +166,14 @@ export default function HomeRepartidor() {
         )}
       </View>
 
-      {/* Botón principal INICIAR / PAUSAR */}
-      <Button
-        label={jornadaActiva ? 'PAUSAR TURNO' : 'INICIAR TURNO'}
-        onPress={() => (jornadaActiva ? pausarJornada() : iniciarJornada())}
-        variant={jornadaActiva ? 'warning' : 'primary'}
-      />
+      {/* Botón principal INICIAR — solo visible cuando el turno no está activo */}
+      {!jornadaActiva && (
+        <Button
+          label="INICIAR TURNO"
+          onPress={() => iniciarJornada()}
+          variant="primary"
+        />
+      )}
 
       {/* Grilla de acciones rápidas */}
       <View style={styles.grid}>

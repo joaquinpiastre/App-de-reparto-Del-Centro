@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useMemo } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { Screen } from '@/components/ui/Screen';
@@ -83,17 +83,9 @@ export default function Resumen() {
         label="GUARDAR Y CERRAR TURNO"
         variant="secondary"
         onPress={() => {
-          Alert.alert('Guardar turno', '¿Guardar y finalizar la jornada?', [
-            { text: 'Cancelar', style: 'cancel' },
-            {
-              text: 'Guardar',
-              onPress: () => {
-                void cerrarJornada().finally(() => {
-                  router.replace('/(repartidor)');
-                });
-              },
-            },
-          ]);
+          void cerrarJornada().finally(() => {
+            router.replace('/(repartidor)');
+          });
         }}
       />
       <Button label="CERRAR SESIÓN" variant="danger" onPress={cerrarSesion} />

@@ -195,8 +195,8 @@ asignacionesRouter.patch('/asignaciones/:id/estado', requireAuth, async (req, re
     `UPDATE asignaciones
         SET estado           = $1,
             notas_repartidor = COALESCE($2, notas_repartidor),
-            hora_llegada_ms  = COALESCE($3, hora_llegada_ms),
-            hora_salida_ms   = COALESCE($4, hora_salida_ms),
+            hora_llegada_ms  = COALESCE(hora_llegada_ms, $3),
+            hora_salida_ms   = COALESCE(hora_salida_ms, $4),
             jornada_id       = COALESCE($5, jornada_id)
       WHERE id = $6`,
     [
