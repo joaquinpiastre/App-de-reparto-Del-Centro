@@ -178,6 +178,20 @@ pedidosCalleRouter.post('/pedidos-calle/cerrar-turno', requireAuth, async (req, 
        and estado in ('entregado', 'en_ruta', 'asignado', 'cancelado')`,
     [jornadaId, repartidorId]
   ).catch(() => {}); // tabla puede no tener columna jornada_id aún; ensureColumns la agrega
+
+  // Asociar asignaciones del día cuyo jornada_id quedó NULL por fallas de red durante la entrega.
+  // Solo toca asignaciones de los últimos 2 días para no mezclar turnos anteriores que también
+  // hayan fallado en sincronizar.
+  await pool.query(
+    `update asignaciones
+     set jornada_id = $1
+     where repartidor_id = $2
+       and jornada_id is null
+       and estado in ('entregado', 'problema', 'en_camino')
+       and fecha_programada >= current_date - interval '1 day'`,
+    [jornadaId, repartidorId]
+  ).catch(() => {}); // silencioso: si la columna no existe aún no bloquear el cierre
+
   res.json({ ok: true });
 });
 

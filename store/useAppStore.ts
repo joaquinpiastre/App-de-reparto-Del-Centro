@@ -75,6 +75,7 @@ interface AppStore {
   iniciarJornada: () => Promise<void>;
   pausarJornada: () => Promise<void>;
   cerrarJornada: () => Promise<void>;
+  restaurarJornada: () => Promise<void>;
   resetSesion: () => void;
   siguienteCliente: () => void;
   irAlPrimerPendiente: () => void;
@@ -142,16 +143,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
       );
       return;
     }
+    const jornadaInicioEpoch = Date.now();
     set({
       jornadaActiva: true,
       gpsActivo: true,
       jornadaId,
-      jornadaInicioEpoch: Date.now(),
+      jornadaInicioEpoch,
       clientesDelDia: clientes,
       clienteActualIndex: 0,
       fotoPendienteUri: null,
       entregaTimerSegundos: 0,
     });
+    // Persistir para recuperar el turno si el OS mata la app con la pantalla apagada
+    void AsyncStorage.multiSet([
+      ['jornada_activa_id', jornadaId],
+      ['jornada_inicio_epoch', String(jornadaInicioEpoch)],
+    ]);
     if (usuario?.id) {
       await iniciarGPS(jornadaId, usuario.id, usuario.nombre).catch((err) => {
         const msg = err instanceof Error ? err.message : 'No se pudo iniciar el GPS.';
@@ -208,7 +215,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       entregaTimerSegundos: 0,
       viajeIniciadoEpoch: null,
     });
-    void AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index']);
+    void AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index', 'jornada_activa_id', 'jornada_inicio_epoch']);
     // Revertir a presencia: el admin sigue viendo al repartidor aunque terminó el turno
     await detenerGPS(true).catch((err) => console.warn('detenerGPS:', err));
 
@@ -244,8 +251,38 @@ export const useAppStore = create<AppStore>((set, get) => ({
       fotoPendienteUri: null,
       entregaTimerSegundos: 0,
     });
+    void AsyncStorage.multiRemove(['jornada_activa_id', 'jornada_inicio_epoch']).catch(() => {});
     // Parada completa del GPS en logout
     void detenerGPS(false).catch((err) => console.warn('detenerGPS logout:', err));
+  },
+
+  restaurarJornada: async () => {
+    const { usuario } = get();
+    if (!usuario) return;
+    const [[, jornadaActivaId], [, jornadaEpochStr]] = await AsyncStorage.multiGet([
+      'jornada_activa_id',
+      'jornada_inicio_epoch',
+    ]);
+    if (!jornadaActivaId || !jornadaEpochStr) return;
+    try {
+      // Recargar solo los clientes que aún no fueron visitados
+      const clientes = await cargarClientesDesdeAsignaciones(usuario);
+      const optimizados = clientes.length > 0 ? optimizarRuta(clientes) : [];
+      // Limpiar datos de viaje porque el índice ya no aplica a la nueva lista
+      await AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index']);
+      set({
+        jornadaActiva: true,
+        gpsActivo: true,
+        jornadaId: jornadaActivaId,
+        jornadaInicioEpoch: Number(jornadaEpochStr),
+        clientesDelDia: optimizados,
+        clienteActualIndex: 0,
+        viajeIniciadoEpoch: null,
+      });
+    } catch {
+      // Sin conexión — el repartidor verá el botón INICIAR TURNO normalmente.
+      // No limpiar las claves de AsyncStorage para reintentar en el próximo arranque.
+    }
   },
 
   siguienteCliente: () => {

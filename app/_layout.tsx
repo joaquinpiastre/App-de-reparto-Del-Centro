@@ -65,8 +65,13 @@ export default function RootLayout() {
       if (!mounted) return;
       setUsuario(user);
 
-      // Restaurar viaje en curso si la app fue matada mientras el repartidor estaba en camino
       if (user?.rol === 'repartidor' && Platform.OS !== 'web') {
+        // Recuperar jornada activa si el OS mató la app con la pantalla apagada.
+        // restaurarJornada limpia viaje_epoch/viaje_index si recupera exitosamente,
+        // por lo que la restauración del viaje siguiente solo aplica si no hubo jornada que recuperar.
+        await useAppStore.getState().restaurarJornada();
+
+        // Restaurar viaje en curso (solo si restaurarJornada no lo limpió)
         const epochStr = await AsyncStorage.getItem('viaje_epoch');
         const indexStr = await AsyncStorage.getItem('viaje_index');
         if (epochStr && indexStr) {

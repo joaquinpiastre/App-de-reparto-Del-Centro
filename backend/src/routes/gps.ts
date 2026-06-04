@@ -109,6 +109,16 @@ gpsRouter.post('/gps/update', requireMobileKeyOrAuth, async (req, res) => {
     [p.jornadaId, p.repartidorId, p.lat, p.lng, p.velocidad ?? null, p.precision ?? null, p.timestamp]
   );
 
+  // Limpieza de puntos GPS con más de 30 días — se ejecuta en ~1% de las peticiones
+  // para no añadir latencia perceptible. Los datos de presencia (pres-*) son los que
+  // más acumulan y no se necesitan pasados los 30 días.
+  if (Math.random() < 0.01) {
+    void pool.query(
+      `delete from gps_points where timestamp_ms < $1`,
+      [Date.now() - 30 * 24 * 60 * 60 * 1000]
+    );
+  }
+
   res.json({ ok: true });
 });
 
@@ -207,7 +217,6 @@ gpsRouter.get('/gps/jornadas/:jornadaId/recorrido', requireAuth, async (req, res
      join clientes c on c.id = a.cliente_id
      where a.jornada_id = $1
        and a.hora_llegada_ms is not null
-       and a.hora_salida_ms is not null
        and a.estado in ('entregado', 'problema')
      order by a.hora_llegada_ms asc`,
     [jornadaId]
@@ -219,8 +228,10 @@ gpsRouter.get('/gps/jornadas/:jornadaId/recorrido', requireAuth, async (req, res
       lat: Number(r.lat),
       lng: Number(r.lng),
       inicio: Number(r.hora_llegada_ms),
-      fin: Number(r.hora_salida_ms),
-      duracionSegundos: Math.max(0, Math.round((Number(r.hora_salida_ms) - Number(r.hora_llegada_ms)) / 1000)),
+      fin: r.hora_salida_ms != null ? Number(r.hora_salida_ms) : Number(r.hora_llegada_ms),
+      duracionSegundos: r.hora_salida_ms != null
+        ? Math.max(0, Math.round((Number(r.hora_salida_ms) - Number(r.hora_llegada_ms)) / 1000))
+        : 0,
       nombre: r.nombre,
       estado: r.estado as 'entregado' | 'problema',
     }));

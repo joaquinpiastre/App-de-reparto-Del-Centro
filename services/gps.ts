@@ -22,21 +22,18 @@ export async function mandarPosicionGPS(
   velocidad: number,
   precision: number
 ): Promise<void> {
-  const repartidorId = await AsyncStorage.getItem('repartidor_id');
+  // Un solo multiGet en lugar de 3-4 lecturas secuenciales (reduce latencia en background task)
+  const [[, repartidorId], [, repartidorNombre], [, storedJornadaId], [, token]] =
+    await AsyncStorage.multiGet(['repartidor_id', 'repartidor_nombre', 'jornada_id', 'auth_token']);
   if (!repartidorId || !API_ENABLED) return;
-  const repartidorNombre = await AsyncStorage.getItem('repartidor_nombre');
-  // Si no hay jornada real activa, usar jornada de presencia del día
-  let jornadaId = await AsyncStorage.getItem('jornada_id');
-  if (!jornadaId) {
-    jornadaId = presenciaJornadaId(repartidorId);
-    await AsyncStorage.setItem('jornada_id', jornadaId);
-  }
+  // Si no hay jornada real activa usar jornada de presencia del día.
+  // No se escribe en AsyncStorage desde el task de fondo para evitar races con el hilo principal.
+  const jornadaId = storedJornadaId ?? presenciaJornadaId(repartidorId);
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (MOBILE_API_KEY) {
     headers.Authorization = `Bearer ${MOBILE_API_KEY}`;
   } else {
-    const token = await AsyncStorage.getItem('auth_token');
     if (token) headers.Authorization = `Bearer ${token}`;
   }
   const controller = new AbortController();
@@ -65,13 +62,18 @@ export async function mandarPosicionGPS(
 TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {
   if (error || !data) return;
   const { locations } = data as { locations: Location.LocationObject[] };
+  if (!locations?.length) return;
   const location = locations[0];
-  await mandarPosicionGPS(
-    location.coords.latitude,
-    location.coords.longitude,
-    location.coords.speed ?? 0,
-    location.coords.accuracy ?? 0,
-  );
+  try {
+    await mandarPosicionGPS(
+      location.coords.latitude,
+      location.coords.longitude,
+      location.coords.speed ?? 0,
+      location.coords.accuracy ?? 0,
+    );
+  } catch {
+    // error de red o timeout — el task sigue corriendo; próxima ejecución lo reintentará
+  }
 });
 
 /**
@@ -156,10 +158,16 @@ export async function iniciarGPS(jornadaId: string, repartidorId: string, repart
     return;
   }
 
-  const { status } = await Location.requestForegroundPermissionsAsync();
-  const bg = await Location.requestBackgroundPermissionsAsync();
-  if (status !== 'granted' || bg.status !== 'granted') {
-    throw new Error('Permiso de GPS denegado');
+  // Verificar estado actual antes de solicitar para no mostrar diálogos si ya están otorgados
+  const { status: fgActual } = await Location.getForegroundPermissionsAsync();
+  if (fgActual !== 'granted') {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') throw new Error('Permiso de GPS denegado');
+  }
+  const { status: bgActual } = await Location.getBackgroundPermissionsAsync();
+  if (bgActual !== 'granted') {
+    const { status } = await Location.requestBackgroundPermissionsAsync();
+    if (status !== 'granted') throw new Error('Permiso de GPS denegado');
   }
 
   await arrancarLocationTask('Rastreando tu ruta de reparto');
@@ -187,10 +195,16 @@ export async function iniciarGPSPresencia(repartidorId: string, repartidorNombre
     const yaActivo = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);
     if (yaActivo) return;
 
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') return;
-    const bg = await Location.requestBackgroundPermissionsAsync();
-    if (bg.status !== 'granted') return;
+    const { status: fgActual } = await Location.getForegroundPermissionsAsync();
+    if (fgActual !== 'granted') {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return;
+    }
+    const { status: bgActual } = await Location.getBackgroundPermissionsAsync();
+    if (bgActual !== 'granted') {
+      const { status } = await Location.requestBackgroundPermissionsAsync();
+      if (status !== 'granted') return;
+    }
 
     await arrancarLocationTask('Seguimiento de ubicación activo');
     void solicitarExencionBateria();
