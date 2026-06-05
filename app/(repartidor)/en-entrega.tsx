@@ -1,6 +1,5 @@
-import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Linking, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
@@ -8,7 +7,6 @@ import { TimerEntrega } from '@/components/entrega/TimerEntrega';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
-import { actualizarEstadoAsignacion } from '@/services/asignaciones';
 import { useAppStore } from '@/store/useAppStore';
 
 function useSegundosDesdeEpoch(epoch: number | null): number {
@@ -46,30 +44,18 @@ export default function EnEntrega() {
 
   const cliente = clientesDelDia[clienteActualIndex];
   const [notas, setNotas] = useState('');
-  const llegadaRegistradaRef = useRef<string | null>(null);
+  const clienteIdAlMontarRef = useRef<string | null>(null);
 
   // Timer: calcula siempre desde el epoch real → correcto al volver de background
   const segundosViaje = useSegundosDesdeEpoch(viajeIniciadoEpoch);
 
-  useFocusEffect(
-    useCallback(() => {
-      // Solo registrar hora_llegada en backend para el historial.
-      // El estado en_camino ya se marcó en el store cuando el repartidor presionó "VISITAR".
-      if (
-        cliente &&
-        (cliente.estado === 'pendiente' || cliente.estado === 'en_camino') &&
-        llegadaRegistradaRef.current !== cliente.id
-      ) {
-        const ahora = Date.now();
-        llegadaRegistradaRef.current = cliente.id;
-        void actualizarEstadoAsignacion(cliente.id, 'en_camino', {
-          horaLlegadaMs: ahora,
-          jornadaId: jornadaId ?? undefined,
-        }).catch(() => {});
-      }
+  // Limpiar notas al abrir la pantalla para un cliente nuevo
+  useEffect(() => {
+    if (cliente?.id && cliente.id !== clienteIdAlMontarRef.current) {
+      clienteIdAlMontarRef.current = cliente.id;
       setNotas('');
-    }, [cliente?.id, cliente?.estado, jornadaId])
-  );
+    }
+  }, [cliente?.id]);
 
   if (!jornadaActiva || !cliente) {
     return (

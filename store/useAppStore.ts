@@ -165,12 +165,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setEntregaTimerSegundos: (n) => set({ entregaTimerSegundos: n }),
   iniciarViajeACliente: (index) => {
     const epoch = Date.now();
-    const { clientesDelDia } = get();
+    const { clientesDelDia, jornadaId } = get();
     const cliente = clientesDelDia[index];
     set({ clienteActualIndex: index, viajeIniciadoEpoch: epoch });
-    // Marcar en_camino aquí (cuando el rep presiona VISITAR) en lugar de en useFocusEffect,
-    // para que el estado sea siempre una elección explícita del repartidor.
-    if (cliente) get().marcarClienteEstado(cliente.id, 'en_camino');
+    if (cliente) {
+      // Marcar en_camino localmente — elección explícita del repartidor al presionar VISITAR
+      get().marcarClienteEstado(cliente.id, 'en_camino');
+      // Registrar hora_llegada en el backend aquí (no en useFocusEffect) para evitar
+      // que el efecto se re-dispare cuando siguienteCliente() cambia clienteActualIndex
+      void actualizarEstadoAsignacion(cliente.id, 'en_camino', {
+        horaLlegadaMs: epoch,
+        jornadaId: jornadaId ?? undefined,
+      }).catch(() => {});
+    }
     void AsyncStorage.setItem('viaje_epoch', String(epoch));
     void AsyncStorage.setItem('viaje_index', String(index));
   },
