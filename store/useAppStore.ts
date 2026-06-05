@@ -430,7 +430,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       horaSalidaMs,
       jornadaId: jornadaId ?? undefined,
     }).catch(async () => {
-      // Sin red: encolar para reintentar automáticamente cuando haya conexión
+      // Sin red: encolar silenciosamente para reintentar cuando haya conexión
       await encolarSincronizacion({
         asigId: c.id,
         estado: 'entregado',
@@ -438,10 +438,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
         jornadaId: jornadaId ?? undefined,
         notasRepartidor: opts?.notasRepartidor,
       });
-      Alert.alert(
-        'Sin conexión',
-        'La visita quedó guardada en el dispositivo. Se sincronizará automáticamente cuando haya red.'
-      );
     });
     set({ fotoPendienteUri: null, viajeIniciadoEpoch: null });
     void AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index']);
@@ -465,10 +461,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
         jornadaId: jornadaId ?? undefined,
         notasRepartidor: nota,
       });
-      Alert.alert(
-        'Sin conexión',
-        'El problema quedó guardado en el dispositivo. Se sincronizará cuando haya red.'
-      );
     });
     get().siguienteCliente();
   },
