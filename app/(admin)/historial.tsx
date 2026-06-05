@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { MapaRecorridoHistorial } from '@/components/mapa/MapaRecorridoHistorial';
@@ -20,6 +20,7 @@ import type { PedidoCalle, EstadoPedidoCalle } from '@/types';
 import type { CierreJornadaResumen } from '@/store/useHistorialStore';
 
 type VistaActiva = 'recorrido' | 'lugares' | 'pedidos';
+type FiltroLugares = 'todos' | 'entregado' | 'en_camino' | 'problema';
 
 const ESTADO_COLOR: Record<string, string> = {
   pendiente: '#f59e0b', visto: '#3b82f6', armado: '#8b5cf6',
@@ -53,6 +54,9 @@ export default function Historial() {
   // Cuál card está expandida y qué vista muestra
   const [expandido, setExpandido] = useState<{ id: string; vista: VistaActiva } | null>(null);
   const [loadingInline, setLoadingInline] = useState(false);
+
+  // Filtro de estado para "Lugares recorridos"
+  const [filtroLugares, setFiltroLugares] = useState<FiltroLugares>('todos');
 
   // Cache de datos por jornadaId
   const recorridoCache = useRef<Record<string, RecorridoJornadaResponse>>({});
@@ -115,6 +119,8 @@ export default function Historial() {
       setExpandido(null);
       return;
     }
+    // Al cambiar de jornada o sección, resetear filtro
+    if (expandido?.id !== jornadaId) setFiltroLugares('todos');
     setExpandido({ id: jornadaId, vista });
 
     // Cargar datos si no están cacheados
@@ -236,13 +242,51 @@ export default function Historial() {
                   </>
                 ) : vistaActiva === 'lugares' ? (
                   <>
-                    <Text style={styles.inlineTitle}>
-                      {entregas?.length ?? 0} lugar(es) visitado(s)
-                    </Text>
+                    {/* Chips de filtro por estado */}
+                    {entregas && entregas.length > 0 && (() => {
+                      const conteos = {
+                        todos: entregas.length,
+                        entregado: entregas.filter(e => e.estado === 'entregado').length,
+                        en_camino: entregas.filter(e => e.estado === 'en_camino').length,
+                        problema: entregas.filter(e => e.estado === 'problema').length,
+                      };
+                      const FILTROS_LUGARES: { key: FiltroLugares; label: string; color: string }[] = ([
+                        { key: 'todos' as FiltroLugares, label: `Todos (${conteos.todos})`, color: COLORS.grisSecundario },
+                        { key: 'entregado' as FiltroLugares, label: `✓ Entregado (${conteos.entregado})`, color: '#2e7d52' },
+                        { key: 'en_camino' as FiltroLugares, label: `En camino (${conteos.en_camino})`, color: '#1565c0' },
+                        { key: 'problema' as FiltroLugares, label: `⚠ Problema (${conteos.problema})`, color: '#e65100' },
+                      ] as { key: FiltroLugares; label: string; color: string }[]).filter(f => f.key === 'todos' || conteos[f.key] > 0);
+                      return (
+                        <View style={styles.filtroRow}>
+                          {FILTROS_LUGARES.map(f => {
+                            const activo = filtroLugares === f.key;
+                            return (
+                              <Pressable
+                                key={f.key}
+                                style={[styles.filtroBtn, activo && { backgroundColor: f.color }]}
+                                onPress={() => setFiltroLugares(f.key)}
+                              >
+                                <Text style={[styles.filtroBtnTxt, activo && styles.filtroBtnActivo]}>
+                                  {f.label}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      );
+                    })()}
+
+                    {/* Lista filtrada */}
                     {!entregas || entregas.length === 0 ? (
                       <Text style={styles.row}>Sin visitas registradas para este turno.</Text>
-                    ) : (
-                      entregas.map((e, idx) => {
+                    ) : (() => {
+                      const lista = filtroLugares === 'todos'
+                        ? entregas
+                        : entregas.filter(e => e.estado === filtroLugares);
+                      if (lista.length === 0) {
+                        return <Text style={styles.row}>Sin visitas con ese estado.</Text>;
+                      }
+                      return lista.map((e, idx) => {
                         const minutos = calcMinutos(e.horaLlegada, e.horaSalida);
                         return (
                           <View
@@ -251,6 +295,7 @@ export default function Historial() {
                               styles.lugarCard,
                               e.estado === 'problema' && styles.lugarCardProblema,
                               e.estado === 'entregado' && styles.lugarCardOk,
+                              e.estado === 'en_camino' && styles.lugarCardEnCamino,
                             ]}
                           >
                             <View style={styles.lugarHeader}>
@@ -261,13 +306,28 @@ export default function Historial() {
                               </View>
                               <View style={[
                                 styles.estadoBadge,
-                                { backgroundColor: e.estado === 'entregado' ? '#e8f5e9' : e.estado === 'problema' ? '#fff3e0' : '#f0f0f0' }
+                                {
+                                  backgroundColor:
+                                    e.estado === 'entregado' ? '#e8f5e9'
+                                    : e.estado === 'problema' ? '#fff3e0'
+                                    : e.estado === 'en_camino' ? '#e3f2fd'
+                                    : '#f0f0f0'
+                                }
                               ]}>
                                 <Text style={[
                                   styles.estadoBadgeTxt,
-                                  { color: e.estado === 'entregado' ? '#2e7d52' : e.estado === 'problema' ? '#e65100' : '#666' }
+                                  {
+                                    color:
+                                      e.estado === 'entregado' ? '#2e7d52'
+                                      : e.estado === 'problema' ? '#e65100'
+                                      : e.estado === 'en_camino' ? '#1565c0'
+                                      : '#666'
+                                  }
                                 ]}>
-                                  {e.estado === 'entregado' ? '✓ Entregado' : e.estado === 'problema' ? '⚠ Problema' : e.estado}
+                                  {e.estado === 'entregado' ? '✓ Entregado'
+                                    : e.estado === 'problema' ? '⚠ Problema'
+                                    : e.estado === 'en_camino' ? 'En camino'
+                                    : e.estado}
                                 </Text>
                               </View>
                             </View>
@@ -284,8 +344,8 @@ export default function Historial() {
                             ) : null}
                           </View>
                         );
-                      })
-                    )}
+                      });
+                    })()}
                   </>
                 ) : vistaActiva === 'pedidos' ? (
                   <>
@@ -488,6 +548,7 @@ const styles = StyleSheet.create({
   },
   lugarCardOk: { borderColor: '#c8e6c9', backgroundColor: '#f1f8f2' },
   lugarCardProblema: { borderColor: '#ffe0b2', backgroundColor: '#fff8f2' },
+  lugarCardEnCamino: { borderColor: '#bbdefb', backgroundColor: '#f0f7ff' },
   lugarHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   lugarNum: {
     width: 24, height: 24, borderRadius: 12,
