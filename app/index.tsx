@@ -12,5 +12,9 @@ export default function Index() {
     return <Redirect href="/(admin)" />;
   }
 
+  if (usuario.rol === 'logistica') {
+    return <Redirect href="/(logistica)" />;
+  }
+
   return <Redirect href="/(repartidor)" />;
 }

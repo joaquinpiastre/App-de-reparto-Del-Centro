@@ -26,6 +26,7 @@ export default function RepartidoresAdminScreen() {
   const [usuario, setUsuario] = useState('');
   const [nombre, setNombre] = useState('');
   const [pin, setPin] = useState('');
+  const [rol, setRol] = useState<'repartidor' | 'logistica'>('repartidor');
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const tituloForm = useMemo(
@@ -55,6 +56,7 @@ export default function RepartidoresAdminScreen() {
     setUsuario('');
     setNombre('');
     setPin('');
+    setRol('repartidor');
   };
 
   const guardar = async () => {
@@ -80,8 +82,8 @@ export default function RepartidoresAdminScreen() {
         await actualizarRepartidorAdmin(editingId, { nombre: nombreLimpio, pin: pin.trim() });
         setOk('Repartidor actualizado (nombre y PIN).');
       } else {
-        await crearRepartidorAdminConPin(usuarioLimpio, nombreLimpio, pin.trim());
-        setOk('Repartidor creado.');
+        await crearRepartidorAdminConPin(usuarioLimpio, nombreLimpio, pin.trim(), rol);
+        setOk(rol === 'logistica' ? 'Usuario de Logística creado.' : 'Repartidor creado.');
       }
       resetForm();
       await cargar();
@@ -174,6 +176,23 @@ export default function RepartidoresAdminScreen() {
           editable={!editingId}
           autoCapitalize="none"
         />
+        {!editingId ? (
+          <>
+            <Text style={styles.label}>Tipo de cuenta</Text>
+            <View style={styles.rolSelector}>
+              <Button
+                label="Repartidor"
+                variant={rol === 'repartidor' ? 'primary' : 'secondary'}
+                onPress={() => setRol('repartidor')}
+              />
+              <Button
+                label="Logística"
+                variant={rol === 'logistica' ? 'primary' : 'secondary'}
+                onPress={() => setRol('logistica')}
+              />
+            </View>
+          </>
+        ) : null}
         <Text style={styles.label}>Nombre visible</Text>
         <TextInput
           style={styles.input}
@@ -224,7 +243,14 @@ export default function RepartidoresAdminScreen() {
         ) : (
           repartidores.map((item) => (
             <View key={item.id} style={styles.rowCard}>
-              <Text style={styles.nombre}>{item.nombre}</Text>
+              <View style={styles.nombreRow}>
+                <Text style={styles.nombre}>{item.nombre}</Text>
+                {item.rol === 'logistica' ? (
+                  <View style={styles.badgeLogistica}>
+                    <Text style={styles.badgeLogisticaTxt}>Logística</Text>
+                  </View>
+                ) : null}
+              </View>
               <Text style={styles.detalle}>Usuario: {usuarioDesdeId(item.id)}</Text>
               <Text style={styles.detalle}>Estado: {item.activo ? 'Activo' : 'Inactivo'}</Text>
               <View style={styles.actions}>
@@ -282,6 +308,17 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   inputDisabled: { backgroundColor: '#f3f3f3' },
+  rolSelector: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  nombreRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  badgeLogistica: {
+    backgroundColor: '#eef2ff',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: '#a5b4fc',
+  },
+  badgeLogisticaTxt: { fontFamily: 'Poppins_600SemiBold', color: '#4338ca', fontSize: 11 },
   headerList: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rowCard: {
     borderWidth: 1,

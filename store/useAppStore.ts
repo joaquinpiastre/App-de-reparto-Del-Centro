@@ -335,9 +335,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     void reintentarSincronizaciones();
     try {
       const asignaciones = await obtenerAsignaciones({ repartidorId: usuario.id });
-      const activas = asignaciones
-        .filter((a) => a.estado === 'pendiente' || a.estado === 'en_camino')
-        .sort((a, b) => a.orden - b.orden);
+      const todasOrdenadas = [...asignaciones].sort((a, b) => a.orden - b.orden);
+      const activas = todasOrdenadas.filter((a) => a.estado === 'pendiente' || a.estado === 'en_camino');
 
       if (activas.length === 0) {
         // Jornada ya finalizada → limpiar claves
@@ -345,17 +344,23 @@ export const useAppStore = create<AppStore>((set, get) => ({
         return;
       }
 
-      // Preservar el estado en_camino: el rep estaba yendo a ese cliente cuando murió la app
+      // Incluir también las visitas ya completadas o con problema: si solo se
+      // restauran las pendientes, una visita marcada justo antes de que la app
+      // se reinicie (crash, Android matando el proceso, etc.) desaparece de la
+      // lista del repartidor —aunque el backend ya la tenga como "entregado" y
+      // el admin la vea—, dando la falsa impresión de que no se registró.
+      // Preservar también el estado en_camino: el rep estaba yendo a ese cliente cuando murió la app
       const clientes = optimizarRuta(
-        activas.map((a, idx) => {
+        todasOrdenadas.map((a, idx) => {
           const c = asignacionToCliente(a, idx);
           return a.estado === 'en_camino' ? { ...c, estado: 'en_camino' as const } : c;
         })
       );
 
-      // Encontrar el cliente en_camino para restaurar el índice y el timer
+      // Encontrar el cliente en_camino (o si no hay, el primer pendiente) para restaurar el índice
       const enCaminoIdx = clientes.findIndex((c) => c.estado === 'en_camino');
-      const clienteActualIndex = enCaminoIdx >= 0 ? enCaminoIdx : 0;
+      const primerPendienteIdx = clientes.findIndex((c) => c.estado === 'pendiente');
+      const clienteActualIndex = enCaminoIdx >= 0 ? enCaminoIdx : Math.max(primerPendienteIdx, 0);
 
       let viajeIniciadoEpoch: number | null = null;
       if (enCaminoIdx >= 0) {

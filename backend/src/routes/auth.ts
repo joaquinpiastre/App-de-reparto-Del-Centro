@@ -38,14 +38,14 @@ authRouter.post('/auth/login', async (req, res) => {
      where id = $1`,
     [id]
   );
-  let rol: 'admin' | 'repartidor';
+  let rol: 'admin' | 'repartidor' | 'logistica';
   let nombre: string;
   let activo = true;
 
   if ((existente.rowCount ?? 0) > 0) {
     const row = existente.rows[0] as {
       nombre: string;
-      rol: 'admin' | 'repartidor';
+      rol: 'admin' | 'repartidor' | 'logistica';
       activo: boolean;
       pin: string | null;
     };
@@ -76,7 +76,7 @@ authRouter.post('/auth/login', async (req, res) => {
 
 authRouter.get('/auth/me', requireAuth, async (req, res) => {
   await ensurePinColumn();
-  const user = (req as { user?: { sub: string; nombre: string; rol: 'admin' | 'repartidor' } }).user;
+  const user = (req as { user?: { sub: string; nombre: string; rol: 'admin' | 'repartidor' | 'logistica' } }).user;
   if (!user?.sub) {
     res.status(401).json({ error: 'Token inválido.' });
     return;
@@ -88,7 +88,7 @@ authRouter.get('/auth/me', requireAuth, async (req, res) => {
     [user.sub]
   );
   if ((db.rowCount ?? 0) > 0) {
-    const row = db.rows[0] as { id: string; nombre: string; rol: 'admin' | 'repartidor'; activo: boolean };
+    const row = db.rows[0] as { id: string; nombre: string; rol: 'admin' | 'repartidor' | 'logistica'; activo: boolean };
     if (!row.activo) {
       res.status(403).json({ error: 'Usuario inactivo.' });
       return;

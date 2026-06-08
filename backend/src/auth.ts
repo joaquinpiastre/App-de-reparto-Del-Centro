@@ -5,7 +5,7 @@ import { config } from './config.js';
 export interface AuthClaims {
   sub: string;
   nombre: string;
-  rol: 'admin' | 'repartidor';
+  rol: 'admin' | 'repartidor' | 'logistica';
 }
 
 export function signToken(claims: AuthClaims): string {

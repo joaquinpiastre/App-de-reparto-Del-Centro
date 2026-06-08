@@ -22,11 +22,12 @@ export async function crearRepartidorAdmin(usuario: string, nombre: string): Pro
 export async function crearRepartidorAdminConPin(
   usuario: string,
   nombre: string,
-  pin: string
+  pin: string,
+  rol?: 'repartidor' | 'logistica'
 ): Promise<Usuario> {
   const data = await apiRequest<{ repartidor: Usuario }>('/repartidores', {
     method: 'POST',
-    body: JSON.stringify({ usuario, nombre, pin }),
+    body: JSON.stringify({ usuario, nombre, pin, rol }),
   });
   return data.repartidor;
 }

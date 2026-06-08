@@ -92,6 +92,7 @@ export interface TopClienteStat {
   direccion: string;
   tipo: 'cliente' | 'taller';
   visitas: number;
+  repartidorTop?: { id: string; nombre: string; visitas: number } | null;
 }
 
 export interface CombustibleRepartidorStat {

@@ -458,14 +458,31 @@ async function calcularDashboardInicio(rango: RangoMes) {
 
   const [topClientesRes, combustibleRes, visitasPorDiaRes, paradaRes] = await Promise.all([
     pool.query(
-      `select c.id, c.nombre, c.direccion, c.tipo,
-              count(*)::int as visitas
-         from asignaciones a
-         join clientes c on c.id = a.cliente_id
-        where a.estado = 'entregado'
-          and a.fecha_programada >= $1 and a.fecha_programada < $2
-        group by c.id, c.nombre, c.direccion, c.tipo
-        order by visitas desc, c.nombre asc`,
+      `with vcr as (
+         select a.cliente_id, a.repartidor_id, count(*)::int as visitas
+           from asignaciones a
+          where a.estado = 'entregado'
+            and a.fecha_programada >= $1 and a.fecha_programada < $2
+          group by a.cliente_id, a.repartidor_id
+       ),
+       totales as (
+         select cliente_id, sum(visitas)::int as visitas
+           from vcr
+          group by cliente_id
+       ),
+       top_rep as (
+         select distinct on (cliente_id) cliente_id, repartidor_id, visitas as visitas_repartidor
+           from vcr
+          order by cliente_id, visitas desc, repartidor_id asc
+       )
+       select c.id, c.nombre, c.direccion, c.tipo, t.visitas,
+              r.id as "repartidorTopId", r.nombre as "repartidorTopNombre",
+              tr.visitas_repartidor as "repartidorTopVisitas"
+         from totales t
+         join clientes c on c.id = t.cliente_id
+         left join top_rep tr on tr.cliente_id = t.cliente_id
+         left join repartidores r on r.id = tr.repartidor_id
+        order by t.visitas desc, c.nombre asc`,
       [desdeFecha, hastaFecha]
     ),
     pool.query(
@@ -505,8 +522,21 @@ async function calcularDashboardInicio(rango: RangoMes) {
       direccion: string;
       tipo: 'cliente' | 'taller';
       visitas: number;
+      repartidorTopId: string | null;
+      repartidorTopNombre: string | null;
+      repartidorTopVisitas: number | null;
     }>
-  ).map((c) => ({ ...c, visitas: Number(c.visitas ?? 0) }));
+  ).map((c) => ({
+    id: c.id,
+    nombre: c.nombre,
+    direccion: c.direccion,
+    tipo: c.tipo,
+    visitas: Number(c.visitas ?? 0),
+    repartidorTop:
+      c.repartidorTopId && c.repartidorTopNombre
+        ? { id: c.repartidorTopId, nombre: c.repartidorTopNombre, visitas: Number(c.repartidorTopVisitas ?? 0) }
+        : null,
+  }));
 
   const porRepartidor = (
     combustibleRes.rows as Array<{

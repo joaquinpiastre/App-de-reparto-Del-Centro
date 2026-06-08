@@ -16,6 +16,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { inicializarNotificaciones } from '@/services/notificaciones';
 import { restaurarSesionApi } from '@/services/authApi';
 import { enviarPosicionActual, reanudarGPSSiNecesario } from '@/services/gps';
@@ -132,20 +133,22 @@ export default function RootLayout() {
         style={Platform.OS === 'web' ? styles.rootWeb : styles.root}
       >
         <StatusBar style="light" />
-        <RootNav
-        detachInactiveScreens={false}
-        initialRouteName="index"
-        screenOptions={
-          Platform.OS === 'web'
-            ? {
-                headerShown: false,
-                animation: 'none',
-                contentStyle: { flex: 1 },
-              }
-            : { headerShown: false }
-        }
-        {...stackExtras}
-      />
+        <ErrorBoundary>
+          <RootNav
+          detachInactiveScreens={false}
+          initialRouteName="index"
+          screenOptions={
+            Platform.OS === 'web'
+              ? {
+                  headerShown: false,
+                  animation: 'none',
+                  contentStyle: { flex: 1 },
+                }
+              : { headerShown: false }
+          }
+          {...stackExtras}
+        />
+        </ErrorBoundary>
       </GestureHandlerRootView>
     </SafeAreaProvider>
   );

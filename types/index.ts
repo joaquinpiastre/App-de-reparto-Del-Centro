@@ -1,4 +1,4 @@
-export type RolUsuario = 'repartidor' | 'admin';
+export type RolUsuario = 'repartidor' | 'admin' | 'logistica';
 export type EstadoEntrega = 'pendiente' | 'en_camino' | 'entregado' | 'problema';
 
 /** Cliente del catálogo (taller o cliente final). */

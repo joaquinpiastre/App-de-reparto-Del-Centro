@@ -30,7 +30,7 @@ export default function LoginScreen() {
       Alert.alert('Datos incompletos', 'Ingresá usuario y PIN de 4 dígitos.');
       return;
     }
-    let rolFinal: 'admin' | 'repartidor';
+    let rolFinal: 'admin' | 'repartidor' | 'logistica';
     try {
       const remoto = await loginApi(u, p);
       if (!remoto) {
@@ -45,6 +45,10 @@ export default function LoginScreen() {
     }
     if (rolFinal === 'admin') {
       router.replace('/(admin)');
+      return;
+    }
+    if (rolFinal === 'logistica') {
+      router.replace('/(logistica)');
       return;
     }
     router.replace('/(repartidor)');

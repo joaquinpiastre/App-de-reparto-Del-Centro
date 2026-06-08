@@ -398,6 +398,15 @@ export function DashboardInicio() {
                   <Text style={styles.rankDireccion} numberOfLines={1}>
                     {c.direccion}
                   </Text>
+                  {c.repartidorTop ? (
+                    <View style={styles.rankRepartidorRow}>
+                      <MaterialIcons name="two-wheeler" size={13} color={COLORS.grisSecundario} />
+                      <Text style={styles.rankRepartidor} numberOfLines={1}>
+                        Repartidor que más visitó: {c.repartidorTop.nombre} ({c.repartidorTop.visitas}{' '}
+                        {c.repartidorTop.visitas === 1 ? 'visita' : 'visitas'})
+                      </Text>
+                    </View>
+                  ) : null}
                   <View style={styles.barTrack}>
                     <View
                       style={[
@@ -628,6 +637,8 @@ const styles = StyleSheet.create({
   rankNombreRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   rankNombre: { fontFamily: 'Poppins_700Bold', fontSize: 14, color: COLORS.grisTexto, flexShrink: 1 },
   rankDireccion: { fontFamily: 'Poppins_400Regular', fontSize: 12, color: COLORS.grisSecundario },
+  rankRepartidorRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  rankRepartidor: { flex: 1, fontFamily: 'Poppins_400Regular', fontSize: 11, color: COLORS.grisSecundario },
   rankBadgeTaller: {
     backgroundColor: '#e7f1fb',
     borderRadius: 999,

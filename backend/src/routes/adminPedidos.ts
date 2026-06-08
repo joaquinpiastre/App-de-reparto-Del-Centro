@@ -62,6 +62,7 @@ const crearRepartidorSchema = z.object({
   nombre: z.string().trim().min(2),
   pin: z.string().trim().regex(/^\d{4}$/, 'PIN inválido. Debe tener 4 dígitos.').optional(),
   activo: z.boolean().optional(),
+  rol: z.enum(['repartidor', 'logistica']).optional(),
 });
 
 const editarRepartidorSchema = z
@@ -121,7 +122,7 @@ adminPedidosRouter.get('/repartidores', requireAuth, async (req, res) => {
   const { rows } = await pool.query(
     `select id, nombre, rol, activo, tipo_vehiculo as "tipoVehiculo"
      from repartidores
-     where rol = 'repartidor'${whereActivo}
+     where rol in ('repartidor', 'logistica')${whereActivo}
      order by activo desc, nombre asc`
   );
   res.json({ repartidores: rows });
@@ -141,17 +142,18 @@ adminPedidosRouter.post('/repartidores', requireAuth, async (req, res) => {
   const nombre = parsed.data.nombre.trim();
   const pin = parsed.data.pin?.trim() || DEMO_PIN;
   const activo = parsed.data.activo ?? true;
+  const rol = parsed.data.rol ?? 'repartidor';
   await pool.query(
     `insert into repartidores (id, nombre, rol, activo, pin)
-     values ($1, $2, 'repartidor', $3, $4)
+     values ($1, $2, $3, $4, $5)
      on conflict (id) do update
        set nombre = excluded.nombre,
            activo = excluded.activo,
-           rol = 'repartidor',
+           rol = excluded.rol,
            pin = excluded.pin`,
-    [id, nombre, activo, pin]
+    [id, nombre, rol, activo, pin]
   );
-  res.json({ ok: true, repartidor: { id, nombre, rol: 'repartidor', activo } });
+  res.json({ ok: true, repartidor: { id, nombre, rol, activo } });
 });
 
 adminPedidosRouter.patch('/repartidores/:id', requireAuth, async (req, res) => {
@@ -164,9 +166,9 @@ adminPedidosRouter.patch('/repartidores/:id', requireAuth, async (req, res) => {
     return;
   }
   const current = await pool.query(
-    `select id, nombre, activo, pin, tipo_vehiculo as "tipoVehiculo"
+    `select id, nombre, rol, activo, pin, tipo_vehiculo as "tipoVehiculo"
      from repartidores
-     where id = $1 and rol = 'repartidor'`,
+     where id = $1 and rol in ('repartidor', 'logistica')`,
     [req.params.id]
   );
   if (current.rowCount === 0) {
@@ -176,6 +178,7 @@ adminPedidosRouter.patch('/repartidores/:id', requireAuth, async (req, res) => {
   const prev = current.rows[0] as {
     id: string;
     nombre: string;
+    rol: 'repartidor' | 'logistica';
     activo: boolean;
     pin: string | null;
     tipoVehiculo: 'auto' | 'moto';
@@ -187,12 +190,12 @@ adminPedidosRouter.patch('/repartidores/:id', requireAuth, async (req, res) => {
   await pool.query(
     `update repartidores
      set nombre = $2, activo = $3, pin = $4, tipo_vehiculo = $5
-     where id = $1 and rol = 'repartidor'`,
+     where id = $1 and rol in ('repartidor', 'logistica')`,
     [req.params.id, nombre, activo, pin, tipoVehiculo]
   );
   res.json({
     ok: true,
-    repartidor: { id: req.params.id, nombre, rol: 'repartidor', activo, tipoVehiculo },
+    repartidor: { id: req.params.id, nombre, rol: prev.rol, activo, tipoVehiculo },
   });
 });
 
@@ -207,7 +210,7 @@ adminPedidosRouter.delete('/repartidores/:id', requireAuth, async (req, res) => 
     await pool.query(`delete from cierres_jornada where repartidor_id = $1`, [id]).catch(() => {});
     await pool.query(`delete from gps_points where repartidor_id = $1`, [id]);
     await pool.query(`delete from jornadas where repartidor_id = $1`, [id]);
-    const del = await pool.query(`delete from repartidores where id = $1 and rol = 'repartidor'`, [id]);
+    const del = await pool.query(`delete from repartidores where id = $1 and rol in ('repartidor', 'logistica')`, [id]);
     if (del.rowCount === 0) {
       await pool.query('rollback');
       res.status(404).json({ error: 'Repartidor no encontrado.' });
