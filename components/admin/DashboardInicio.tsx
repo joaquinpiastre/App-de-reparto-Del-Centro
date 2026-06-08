@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Dimensions, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { BarChart } from 'react-native-chart-kit';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 
@@ -16,8 +15,6 @@ import {
   type TipoVehiculo,
 } from '@/services/adminReportes';
 import { actualizarRepartidorAdmin } from '@/services/adminRepartidores';
-
-const chartW = Dimensions.get('window').width - 48;
 
 const COLOR_MEDALLA = ['#F2C200', '#B8C0C8', '#D08A4E'];
 const COLOR_RANK_DEFAULT = '#E8ECEF';
@@ -190,6 +187,35 @@ function VehiculoSelector({
   );
 }
 
+function GraficoVisitasPorDia({ labels, valores }: { labels: string[]; valores: number[] }) {
+  const max = Math.max(1, ...valores);
+  let topIndex = 0;
+  valores.forEach((v, i) => {
+    if (v > valores[topIndex]) topIndex = i;
+  });
+
+  return (
+    <View style={styles.diaChart}>
+      {labels.map((lbl, i) => {
+        const v = valores[i] ?? 0;
+        const esTop = v > 0 && i === topIndex;
+        const alto = v > 0 ? Math.max(10, Math.round((v / max) * 100)) : 0;
+        return (
+          <View key={lbl} style={styles.diaCol}>
+            <Text style={styles.diaValor}>{v > 0 ? v : ''}</Text>
+            <View style={styles.diaBarTrack}>
+              <View style={[styles.diaBarFill, { height: `${alto}%` }, esTop && styles.diaBarFillTop]} />
+            </View>
+            <Text style={[styles.diaLabel, esTop && styles.diaLabelTop]} numberOfLines={1}>
+              {lbl}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function FilaRepartidor({
   repartidor,
   ocupado,
@@ -300,6 +326,15 @@ export function DashboardInicio() {
     () => (data?.visitasPorDia.valores ?? []).reduce((acc, v) => Math.max(acc, v), 0),
     [data]
   );
+
+  const diaTopIndex = useMemo(() => {
+    const valores = data?.visitasPorDia.valores ?? [];
+    let idx = 0;
+    valores.forEach((v, i) => {
+      if (v > (valores[idx] ?? 0)) idx = i;
+    });
+    return idx;
+  }, [data]);
 
   if (loading && !data) {
     return (
@@ -424,26 +459,18 @@ export function DashboardInicio() {
         {maxVisitasDia === 0 ? (
           <Text style={styles.sub}>Todavía no hay entregas registradas para graficar.</Text>
         ) : (
-          <BarChart
-            data={{
-              labels: data.visitasPorDia.labels,
-              datasets: [{ data: data.visitasPorDia.valores }],
-            }}
-            width={chartW}
-            height={200}
-            yAxisLabel=""
-            yAxisSuffix=""
-            fromZero
-            chartConfig={{
-              backgroundGradientFrom: '#ffffff',
-              backgroundGradientTo: '#ffffff',
-              decimalPlaces: 0,
-              color: (opacity = 1) => `rgba(74, 143, 20, ${opacity})`,
-              labelColor: () => COLORS.grisTexto,
-              barPercentage: 0.6,
-            }}
-            style={styles.chart}
-          />
+          <>
+            <GraficoVisitasPorDia labels={data.visitasPorDia.labels} valores={data.visitasPorDia.valores} />
+            <View style={styles.diaDestacado}>
+              <MaterialIcons name="insights" size={16} color={COLORS.acentoAzul} />
+              <Text style={styles.diaDestacadoTxt}>
+                <Text style={styles.diaDestacadoFuerte}>{data.visitasPorDia.labels[diaTopIndex]}</Text> es el
+                día con más entregas en {data.periodo.etiqueta.toLowerCase()}, con{' '}
+                {data.visitasPorDia.valores[diaTopIndex]}{' '}
+                {data.visitasPorDia.valores[diaTopIndex] === 1 ? 'visita' : 'visitas'}.
+              </Text>
+            </View>
+          </>
         )}
       </View>
 
@@ -526,7 +553,55 @@ const styles = StyleSheet.create({
   cardTitle: { fontFamily: 'Poppins_700Bold', fontSize: 15, color: COLORS.grisTexto, flexShrink: 1 },
   stat: { fontFamily: 'Poppins_800ExtraBold', fontSize: 22, color: COLORS.grisTexto },
   sub: { fontFamily: 'Poppins_400Regular', fontSize: 13, color: COLORS.grisSecundario, lineHeight: 18 },
-  chart: { borderRadius: 12, marginTop: 8, alignSelf: 'center' },
+
+  // Visitas por día
+  diaChart: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: 150,
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 2,
+  },
+  diaCol: { flex: 1, height: '100%', alignItems: 'center', justifyContent: 'flex-end' },
+  diaValor: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 12,
+    color: COLORS.grisTexto,
+    marginBottom: 4,
+    minHeight: 16,
+  },
+  diaBarTrack: {
+    width: '100%',
+    maxWidth: 30,
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: '#eef1f3',
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+  },
+  diaBarFill: { width: '100%', borderRadius: 10, backgroundColor: COLORS.verdePrincipal },
+  diaBarFillTop: { backgroundColor: COLORS.acentoAzul },
+  diaLabel: { fontFamily: 'Poppins_600SemiBold', fontSize: 11, color: COLORS.grisSecundario, marginTop: 8 },
+  diaLabelTop: { color: COLORS.acentoAzul },
+  diaDestacado: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#eaf4fd',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 12,
+  },
+  diaDestacadoTxt: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 12,
+    color: COLORS.grisTexto,
+    lineHeight: 17,
+    flexShrink: 1,
+  },
+  diaDestacadoFuerte: { fontFamily: 'Poppins_700Bold', color: COLORS.acentoAzul },
 
   // Ranking
   rankScroll: { maxHeight: 300, marginTop: 2 },
