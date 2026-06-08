@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, requireMobileKeyOrAuth } from '../auth.js';
 import { pool } from '../db/client.js';
-type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' } };
+type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' | 'logistica' } };
 
 const gpsUpdateSchema = z.object({
   jornadaId: z.string().min(3),
@@ -156,7 +156,7 @@ gpsRouter.get('/gps/live', requireAuth, async (_req, res) => {
 
 gpsRouter.get('/gps/jornadas/:jornadaId/recorrido', requireAuth, async (req, res) => {
   const user = (req as ReqWithUser).user;
-  if (user?.rol !== 'admin' && user?.rol !== 'repartidor') {
+  if (user?.rol !== 'admin' && user?.rol !== 'repartidor' && user?.rol !== 'logistica') {
     res.status(403).json({ error: 'No autorizado.' });
     return;
   }

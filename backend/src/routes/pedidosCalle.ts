@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../auth.js';
 import { pool } from '../db/client.js';
-type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' } };
+type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' | 'logistica' } };
 
 const itemSchema = z.object({
   codigo: z.string().optional(),
@@ -53,10 +53,10 @@ async function ensureColumns(): Promise<void> {
 pedidosCalleRouter.get('/pedidos-calle', requireAuth, async (req, res) => {
   await ensureColumns();
   const user = (req as ReqWithUser).user;
-  const esAdmin = user?.rol === 'admin';
-  // Admins ven todos los pedidos (incluyendo los ya cerrados con jornada_id).
+  const veTodo = user?.rol === 'admin' || user?.rol === 'logistica';
+  // Admins y logística ven todos los pedidos (incluyendo los ya cerrados con jornada_id).
   // Repartidores solo ven los abiertos (sin jornada_id).
-  const whereJornada = esAdmin ? '' : 'where p.jornada_id is null';
+  const whereJornada = veTodo ? '' : 'where p.jornada_id is null';
   const { rows } = await pool.query(
     `select
        p.id,

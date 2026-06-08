@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../auth.js';
 import { pool } from '../db/client.js';
-type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor'; nombre?: string } };
+type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' | 'logistica'; nombre?: string } };
 
 const entregaSchema = z.object({
   jornadaId: z.string().min(3),
@@ -33,6 +33,17 @@ export const entregasRouter = Router();
 function requireAdmin(req: ReqWithUser, res: { status: (n: number) => { json: (b: unknown) => void } }): boolean {
   if (req.user?.rol !== 'admin') {
     res.status(403).json({ error: 'Solo admins pueden ver reportes.' });
+    return false;
+  }
+  return true;
+}
+
+function requireAdminOrLogistica(
+  req: ReqWithUser,
+  res: { status: (n: number) => { json: (b: unknown) => void } }
+): boolean {
+  if (req.user?.rol !== 'admin' && req.user?.rol !== 'logistica') {
+    res.status(403).json({ error: 'Solo admins y logística pueden ver reportes.' });
     return false;
   }
   return true;
@@ -159,7 +170,7 @@ entregasRouter.post('/cierres-jornada', requireAuth, async (req, res) => {
 });
 
 entregasRouter.get('/admin-reportes/historial', requireAuth, async (req, res) => {
-  if (!requireAdmin(req as ReqWithUser, res)) return;
+  if (!requireAdminOrLogistica(req as ReqWithUser, res)) return;
   await ensureCierresTable();
   const cierreRes = await pool.query(
     `select
@@ -193,7 +204,7 @@ entregasRouter.get('/admin-reportes/historial', requireAuth, async (req, res) =>
 });
 
 entregasRouter.get('/admin-reportes/historial/:jornadaId/pedidos', requireAuth, async (req, res) => {
-  if (!requireAdmin(req as ReqWithUser, res)) return;
+  if (!requireAdminOrLogistica(req as ReqWithUser, res)) return;
   const jornadaId = String(req.params.jornadaId ?? '').trim();
   if (!jornadaId) {
     res.status(400).json({ error: 'Jornada inválida.' });
@@ -310,7 +321,7 @@ entregasRouter.get('/admin-reportes/historial/:jornadaId/pedidos', requireAuth, 
 });
 
 entregasRouter.get('/admin-reportes/historial/:jornadaId/entregas', requireAuth, async (req, res) => {
-  if (!requireAdmin(req as ReqWithUser, res)) return;
+  if (!requireAdminOrLogistica(req as ReqWithUser, res)) return;
   const jornadaId = String(req.params.jornadaId ?? '').trim();
   if (!jornadaId) {
     res.status(400).json({ error: 'Jornada inválida.' });
@@ -337,7 +348,7 @@ entregasRouter.get('/admin-reportes/historial/:jornadaId/entregas', requireAuth,
 });
 
 entregasRouter.get('/admin-reportes/stats', requireAuth, async (req, res) => {
-  if (!requireAdmin(req as ReqWithUser, res)) return;
+  if (!requireAdminOrLogistica(req as ReqWithUser, res)) return;
   await ensureCierresTable();
 
   const [totalesRes, cierresRes, topRes] = await Promise.all([
@@ -574,7 +585,7 @@ async function calcularDashboardInicio(rango: RangoMes) {
 }
 
 entregasRouter.get('/admin-reportes/inicio', requireAuth, async (req, res) => {
-  if (!requireAdmin(req as ReqWithUser, res)) return;
+  if (!requireAdminOrLogistica(req as ReqWithUser, res)) return;
   await ensureCierresTable();
   await ensureTipoVehiculoColumn();
   const datos = await calcularDashboardInicio(rangoMesActual());
@@ -618,7 +629,7 @@ entregasRouter.post('/admin-reportes/inicio/guardar', requireAuth, async (req, r
 });
 
 entregasRouter.get('/admin-reportes/inicio/historial', requireAuth, async (req, res) => {
-  if (!requireAdmin(req as ReqWithUser, res)) return;
+  if (!requireAdminOrLogistica(req as ReqWithUser, res)) return;
   await ensureReportesMensualesTable();
 
   const { rows } = await pool.query(
