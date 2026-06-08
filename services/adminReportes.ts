@@ -102,7 +102,14 @@ export interface CombustibleRepartidorStat {
   litrosEstimados: number;
 }
 
+export interface PeriodoMensual {
+  anio: number;
+  mes: number; // 1-12
+  etiqueta: string; // ej. "Junio 2026"
+}
+
 export interface DashboardInicioResponse {
+  periodo: PeriodoMensual;
   topClientes: TopClienteStat[];
   combustible: {
     porRepartidor: CombustibleRepartidorStat[];
@@ -110,6 +117,16 @@ export interface DashboardInicioResponse {
   };
   visitasPorDia: { labels: string[]; valores: number[] };
   promedioParadaMinutos: number;
+}
+
+/** Snapshot mensual guardado por el admin: conserva los datos del mes tal como estaban al guardar. */
+export interface ReporteMensualGuardado {
+  id: string;
+  anio: number;
+  mes: number;
+  etiqueta: string;
+  guardadoEn: number; // timestamp en ms
+  datos: DashboardInicioResponse;
 }
 
 export interface EntregaJornadaHistorial {
@@ -190,14 +207,50 @@ export async function obtenerEntregasJornadaAdmin(
   return data.entregas ?? [];
 }
 
-const DASHBOARD_VACIO: DashboardInicioResponse = {
-  topClientes: [],
-  combustible: { porRepartidor: [], totalLitrosEstimados: 0 },
-  visitasPorDia: { labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'], valores: [0, 0, 0, 0, 0, 0, 0] },
-  promedioParadaMinutos: 0,
-};
+const MESES_ES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
+
+function periodoActual(): PeriodoMensual {
+  const ahora = new Date();
+  return {
+    anio: ahora.getFullYear(),
+    mes: ahora.getMonth() + 1,
+    etiqueta: `${MESES_ES[ahora.getMonth()]} ${ahora.getFullYear()}`,
+  };
+}
+
+function dashboardVacio(): DashboardInicioResponse {
+  return {
+    periodo: periodoActual(),
+    topClientes: [],
+    combustible: { porRepartidor: [], totalLitrosEstimados: 0 },
+    visitasPorDia: { labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'], valores: [0, 0, 0, 0, 0, 0, 0] },
+    promedioParadaMinutos: 0,
+  };
+}
 
 export async function obtenerDashboardInicio(): Promise<DashboardInicioResponse> {
-  if (!API_ENABLED) return DASHBOARD_VACIO;
+  if (!API_ENABLED) return dashboardVacio();
   return apiRequest<DashboardInicioResponse>('/admin-reportes/inicio');
+}
+
+/** Guarda (o reemplaza) el snapshot de estadísticas del mes en curso para poder consultarlo luego en el historial. */
+export async function guardarReporteMensual(): Promise<ReporteMensualGuardado> {
+  if (!API_ENABLED) {
+    throw new Error('API no configurada (falta EXPO_PUBLIC_API_URL).');
+  }
+  const data = await apiRequest<{ ok: boolean; reporte: ReporteMensualGuardado }>(
+    '/admin-reportes/inicio/guardar',
+    { method: 'POST' }
+  );
+  return data.reporte;
+}
+
+/** Lista los reportes mensuales que el admin guardó previamente, del más reciente al más antiguo. */
+export async function obtenerHistorialMensual(): Promise<ReporteMensualGuardado[]> {
+  if (!API_ENABLED) return [];
+  const data = await apiRequest<{ reportes: ReporteMensualGuardado[] }>('/admin-reportes/inicio/historial');
+  return data.reportes ?? [];
 }

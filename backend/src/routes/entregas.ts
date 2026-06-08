@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../auth.js';
 import { pool } from '../db/client.js';
-type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' } };
+type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor'; nombre?: string } };
 
 const entregaSchema = z.object({
   jornadaId: z.string().min(3),
@@ -402,10 +402,59 @@ entregasRouter.get('/admin-reportes/stats', requireAuth, async (req, res) => {
   });
 });
 
-entregasRouter.get('/admin-reportes/inicio', requireAuth, async (req, res) => {
-  if (!requireAdmin(req as ReqWithUser, res)) return;
-  await ensureCierresTable();
-  await ensureTipoVehiculoColumn();
+const MESES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
+
+interface RangoMes {
+  anio: number;
+  mes: number; // 1-12
+  etiqueta: string;
+  desdeFecha: string; // YYYY-MM-DD, para columnas `date`
+  hastaFecha: string; // exclusivo
+  desdeTs: Date; // para columnas `timestamptz`
+  hastaTs: Date; // exclusivo
+}
+
+function rangoDelMes(anio: number, mesIndex0: number): RangoMes {
+  const desde = new Date(anio, mesIndex0, 1, 0, 0, 0, 0);
+  const hasta = new Date(anio, mesIndex0 + 1, 1, 0, 0, 0, 0);
+  const fmtFecha = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return {
+    anio: desde.getFullYear(),
+    mes: desde.getMonth() + 1,
+    etiqueta: `${MESES[desde.getMonth()]} ${desde.getFullYear()}`,
+    desdeFecha: fmtFecha(desde),
+    hastaFecha: fmtFecha(hasta),
+    desdeTs: desde,
+    hastaTs: hasta,
+  };
+}
+
+function rangoMesActual(): RangoMes {
+  const ahora = new Date();
+  return rangoDelMes(ahora.getFullYear(), ahora.getMonth());
+}
+
+async function ensureReportesMensualesTable(): Promise<void> {
+  await pool.query(
+    `create table if not exists reportes_mensuales (
+      id uuid primary key default gen_random_uuid(),
+      anio integer not null,
+      mes integer not null,
+      datos jsonb not null,
+      guardado_por_id text,
+      guardado_por_nombre text,
+      created_at timestamptz not null default now(),
+      unique (anio, mes)
+    )`
+  );
+}
+
+async function calcularDashboardInicio(rango: RangoMes) {
+  const { desdeFecha, hastaFecha, desdeTs, hastaTs } = rango;
 
   const [topClientesRes, combustibleRes, visitasPorDiaRes, paradaRes] = await Promise.all([
     pool.query(
@@ -414,30 +463,39 @@ entregasRouter.get('/admin-reportes/inicio', requireAuth, async (req, res) => {
          from asignaciones a
          join clientes c on c.id = a.cliente_id
         where a.estado = 'entregado'
+          and a.fecha_programada >= $1 and a.fecha_programada < $2
         group by c.id, c.nombre, c.direccion, c.tipo
         order by visitas desc, c.nombre asc
-        limit 8`
+        limit 8`,
+      [desdeFecha, hastaFecha]
     ),
     pool.query(
       `select r.id, r.nombre, r.tipo_vehiculo as "tipoVehiculo",
               coalesce(sum(cj.minutos_en_ruta), 0)::int as "minutosEnRuta"
          from repartidores r
-         left join cierres_jornada cj on cj.repartidor_id = r.id
+         left join cierres_jornada cj
+           on cj.repartidor_id = r.id
+          and cj.created_at >= $1 and cj.created_at < $2
         where r.rol = 'repartidor' and r.activo = true
         group by r.id, r.nombre, r.tipo_vehiculo
-        order by "minutosEnRuta" desc, r.nombre asc`
+        order by "minutosEnRuta" desc, r.nombre asc`,
+      [desdeTs, hastaTs]
     ),
     pool.query(
       `select extract(isodow from a.fecha_programada)::int as dia,
               count(*)::int as visitas
          from asignaciones a
         where a.estado = 'entregado'
-        group by dia`
+          and a.fecha_programada >= $1 and a.fecha_programada < $2
+        group by dia`,
+      [desdeFecha, hastaFecha]
     ),
     pool.query(
       `select coalesce(avg(tiempo_parada_segundos), 0)::int as promedio
          from entregas
-        where tiempo_parada_segundos is not null and tiempo_parada_segundos > 0`
+        where tiempo_parada_segundos is not null and tiempo_parada_segundos > 0
+          and created_at >= $1 and created_at < $2`,
+      [desdeTs, hastaTs]
     ),
   ]);
 
@@ -477,10 +535,80 @@ entregasRouter.get('/admin-reportes/inicio', requireAuth, async (req, res) => {
 
   const promedioSegundos = Number((paradaRes.rows[0] as { promedio: number } | undefined)?.promedio ?? 0);
 
-  res.json({
+  return {
+    periodo: { anio: rango.anio, mes: rango.mes, etiqueta: rango.etiqueta },
     topClientes,
     combustible: { porRepartidor, totalLitrosEstimados },
     visitasPorDia,
     promedioParadaMinutos: Math.round(promedioSegundos / 60),
+  };
+}
+
+entregasRouter.get('/admin-reportes/inicio', requireAuth, async (req, res) => {
+  if (!requireAdmin(req as ReqWithUser, res)) return;
+  await ensureCierresTable();
+  await ensureTipoVehiculoColumn();
+  const datos = await calcularDashboardInicio(rangoMesActual());
+  res.json(datos);
+});
+
+entregasRouter.post('/admin-reportes/inicio/guardar', requireAuth, async (req, res) => {
+  if (!requireAdmin(req as ReqWithUser, res)) return;
+  await ensureCierresTable();
+  await ensureTipoVehiculoColumn();
+  await ensureReportesMensualesTable();
+
+  const user = (req as ReqWithUser).user;
+  const rango = rangoMesActual();
+  const datos = await calcularDashboardInicio(rango);
+
+  const { rows } = await pool.query(
+    `insert into reportes_mensuales (anio, mes, datos, guardado_por_id, guardado_por_nombre)
+     values ($1, $2, $3::jsonb, $4, $5)
+     on conflict (anio, mes) do update
+       set datos = excluded.datos,
+           guardado_por_id = excluded.guardado_por_id,
+           guardado_por_nombre = excluded.guardado_por_nombre,
+           created_at = now()
+     returning id, anio, mes, extract(epoch from created_at) * 1000 as "guardadoEnMs"`,
+    [rango.anio, rango.mes, JSON.stringify(datos), user?.sub ?? null, user?.nombre ?? null]
+  );
+  const row = rows[0] as { id: string; anio: number; mes: number; guardadoEnMs: number };
+
+  res.json({
+    ok: true,
+    reporte: {
+      id: row.id,
+      anio: row.anio,
+      mes: row.mes,
+      etiqueta: rango.etiqueta,
+      guardadoEn: Number(row.guardadoEnMs),
+      datos,
+    },
+  });
+});
+
+entregasRouter.get('/admin-reportes/inicio/historial', requireAuth, async (req, res) => {
+  if (!requireAdmin(req as ReqWithUser, res)) return;
+  await ensureReportesMensualesTable();
+
+  const { rows } = await pool.query(
+    `select id, anio, mes, datos, extract(epoch from created_at) * 1000 as "guardadoEnMs"
+       from reportes_mensuales
+      order by anio desc, mes desc
+      limit 24`
+  );
+
+  res.json({
+    reportes: (
+      rows as Array<{ id: string; anio: number; mes: number; datos: unknown; guardadoEnMs: number }>
+    ).map((r) => ({
+      id: r.id,
+      anio: Number(r.anio),
+      mes: Number(r.mes),
+      etiqueta: `${MESES[Number(r.mes) - 1]} ${r.anio}`,
+      guardadoEn: Number(r.guardadoEnMs),
+      datos: r.datos,
+    })),
   });
 });
