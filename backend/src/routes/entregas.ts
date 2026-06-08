@@ -465,8 +465,7 @@ async function calcularDashboardInicio(rango: RangoMes) {
         where a.estado = 'entregado'
           and a.fecha_programada >= $1 and a.fecha_programada < $2
         group by c.id, c.nombre, c.direccion, c.tipo
-        order by visitas desc, c.nombre asc
-        limit 8`,
+        order by visitas desc, c.nombre asc`,
       [desdeFecha, hastaFecha]
     ),
     pool.query(
