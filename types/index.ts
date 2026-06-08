@@ -32,6 +32,7 @@ export interface Usuario {
   rol: RolUsuario;
   telefono?: string;
   activo: boolean;
+  tipoVehiculo?: 'auto' | 'moto';
 }
 
 export interface Coordenadas {

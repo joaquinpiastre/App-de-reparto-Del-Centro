@@ -33,7 +33,7 @@ export async function crearRepartidorAdminConPin(
 
 export async function actualizarRepartidorAdmin(
   id: string,
-  payload: { nombre?: string; activo?: boolean; pin?: string }
+  payload: { nombre?: string; activo?: boolean; pin?: string; tipoVehiculo?: 'auto' | 'moto' }
 ): Promise<Usuario> {
   const data = await apiRequest<{ repartidor: Usuario }>(`/repartidores/${id}`, {
     method: 'PATCH',

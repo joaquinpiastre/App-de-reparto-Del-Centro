@@ -69,10 +69,16 @@ const editarRepartidorSchema = z
     nombre: z.string().trim().min(2).optional(),
     activo: z.boolean().optional(),
     pin: z.string().trim().regex(/^\d{4}$/, 'PIN inválido. Debe tener 4 dígitos.').optional(),
+    tipoVehiculo: z.enum(['auto', 'moto']).optional(),
   })
-  .refine((x) => x.nombre !== undefined || x.activo !== undefined || x.pin !== undefined, {
-    message: 'Debés enviar al menos un campo a actualizar.',
-  });
+  .refine(
+    (x) =>
+      x.nombre !== undefined ||
+      x.activo !== undefined ||
+      x.pin !== undefined ||
+      x.tipoVehiculo !== undefined,
+    { message: 'Debés enviar al menos un campo a actualizar.' }
+  );
 
 export const adminPedidosRouter = Router();
 
@@ -91,6 +97,15 @@ async function ensurePinColumn(): Promise<void> {
   ]);
 }
 
+async function ensureTipoVehiculoColumn(): Promise<void> {
+  await pool.query(
+    `alter table repartidores add column if not exists tipo_vehiculo text not null default 'moto'`
+  );
+  await pool.query(
+    `update repartidores set tipo_vehiculo = 'moto' where tipo_vehiculo not in ('auto', 'moto')`
+  );
+}
+
 async function ensurePedidosAdminJornadaColumn(): Promise<void> {
   await pool.query(`alter table pedidos_admin add column if not exists jornada_id text`);
   await pool.query(`create index if not exists idx_pedidos_admin_jornada on pedidos_admin(jornada_id)`);
@@ -98,12 +113,13 @@ async function ensurePedidosAdminJornadaColumn(): Promise<void> {
 
 adminPedidosRouter.get('/repartidores', requireAuth, async (req, res) => {
   await ensurePinColumn();
+  await ensureTipoVehiculoColumn();
   const includeInactivos =
     String(req.query.includeInactivos ?? '').trim().toLowerCase() === '1' ||
     String(req.query.includeInactivos ?? '').trim().toLowerCase() === 'true';
   const whereActivo = includeInactivos ? '' : " and activo = true";
   const { rows } = await pool.query(
-    `select id, nombre, rol, activo
+    `select id, nombre, rol, activo, tipo_vehiculo as "tipoVehiculo"
      from repartidores
      where rol = 'repartidor'${whereActivo}
      order by activo desc, nombre asc`
@@ -114,6 +130,7 @@ adminPedidosRouter.get('/repartidores', requireAuth, async (req, res) => {
 adminPedidosRouter.post('/repartidores', requireAuth, async (req, res) => {
   if (!requireAdmin(req as ReqWithUser, res)) return;
   await ensurePinColumn();
+  await ensureTipoVehiculoColumn();
   const parsed = crearRepartidorSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: zodErrorMessage(parsed.error) });
@@ -140,13 +157,14 @@ adminPedidosRouter.post('/repartidores', requireAuth, async (req, res) => {
 adminPedidosRouter.patch('/repartidores/:id', requireAuth, async (req, res) => {
   if (!requireAdmin(req as ReqWithUser, res)) return;
   await ensurePinColumn();
+  await ensureTipoVehiculoColumn();
   const parsed = editarRepartidorSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: zodErrorMessage(parsed.error) });
     return;
   }
   const current = await pool.query(
-    `select id, nombre, activo, pin
+    `select id, nombre, activo, pin, tipo_vehiculo as "tipoVehiculo"
      from repartidores
      where id = $1 and rol = 'repartidor'`,
     [req.params.id]
@@ -155,17 +173,27 @@ adminPedidosRouter.patch('/repartidores/:id', requireAuth, async (req, res) => {
     res.status(404).json({ error: 'Repartidor no encontrado.' });
     return;
   }
-  const prev = current.rows[0] as { id: string; nombre: string; activo: boolean; pin: string | null };
+  const prev = current.rows[0] as {
+    id: string;
+    nombre: string;
+    activo: boolean;
+    pin: string | null;
+    tipoVehiculo: 'auto' | 'moto';
+  };
   const nombre = parsed.data.nombre?.trim() ?? prev.nombre;
   const activo = parsed.data.activo ?? prev.activo;
   const pin = parsed.data.pin?.trim() ?? prev.pin ?? DEMO_PIN;
+  const tipoVehiculo = parsed.data.tipoVehiculo ?? prev.tipoVehiculo;
   await pool.query(
     `update repartidores
-     set nombre = $2, activo = $3, pin = $4
+     set nombre = $2, activo = $3, pin = $4, tipo_vehiculo = $5
      where id = $1 and rol = 'repartidor'`,
-    [req.params.id, nombre, activo, pin]
+    [req.params.id, nombre, activo, pin, tipoVehiculo]
   );
-  res.json({ ok: true, repartidor: { id: req.params.id, nombre, rol: 'repartidor', activo } });
+  res.json({
+    ok: true,
+    repartidor: { id: req.params.id, nombre, rol: 'repartidor', activo, tipoVehiculo },
+  });
 });
 
 adminPedidosRouter.delete('/repartidores/:id', requireAuth, async (req, res) => {

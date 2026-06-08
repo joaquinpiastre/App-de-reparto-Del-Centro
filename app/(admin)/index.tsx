@@ -6,6 +6,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 
 import { Screen } from '@/components/ui/Screen';
 import { Button } from '@/components/ui/Button';
+import { DashboardInicio } from '@/components/admin/DashboardInicio';
 import { COLORS } from '@/constants/colors';
 import { useAppStore } from '@/store/useAppStore';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
@@ -39,7 +40,7 @@ export default function AdminDashboard() {
   };
 
   return (
-    <Screen title="Panel de control" subtitle="Del Centro Pinturerias">
+    <Screen title="Panel de control" subtitle="Del Centro Pinturerias" scrollable>
 
       {/* Card asignaciones de hoy */}
       <View style={styles.card}>
@@ -77,6 +78,8 @@ export default function AdminDashboard() {
         <Text style={styles.stat}>{pendientes} pendiente(s)</Text>
         <Text style={styles.sub}>Pedidos levantados por repartidores durante la ruta.</Text>
       </View>
+
+      <DashboardInicio />
 
       <Button label="Cerrar sesión" onPress={cerrarSesion} variant="danger" />
     </Screen>

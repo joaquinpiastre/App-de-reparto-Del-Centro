@@ -84,6 +84,34 @@ export interface PedidoJornadaHistorial {
   clienteNombre?: string;
 }
 
+export type TipoVehiculo = 'auto' | 'moto';
+
+export interface TopClienteStat {
+  id: string;
+  nombre: string;
+  direccion: string;
+  tipo: 'cliente' | 'taller';
+  visitas: number;
+}
+
+export interface CombustibleRepartidorStat {
+  id: string;
+  nombre: string;
+  tipoVehiculo: TipoVehiculo;
+  minutosEnRuta: number;
+  litrosEstimados: number;
+}
+
+export interface DashboardInicioResponse {
+  topClientes: TopClienteStat[];
+  combustible: {
+    porRepartidor: CombustibleRepartidorStat[];
+    totalLitrosEstimados: number;
+  };
+  visitasPorDia: { labels: string[]; valores: number[] };
+  promedioParadaMinutos: number;
+}
+
 export interface EntregaJornadaHistorial {
   id: string;
   clienteId: string;
@@ -160,4 +188,16 @@ export async function obtenerEntregasJornadaAdmin(
     `/admin-reportes/historial/${jornadaId}/entregas`
   );
   return data.entregas ?? [];
+}
+
+const DASHBOARD_VACIO: DashboardInicioResponse = {
+  topClientes: [],
+  combustible: { porRepartidor: [], totalLitrosEstimados: 0 },
+  visitasPorDia: { labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'], valores: [0, 0, 0, 0, 0, 0, 0] },
+  promedioParadaMinutos: 0,
+};
+
+export async function obtenerDashboardInicio(): Promise<DashboardInicioResponse> {
+  if (!API_ENABLED) return DASHBOARD_VACIO;
+  return apiRequest<DashboardInicioResponse>('/admin-reportes/inicio');
 }

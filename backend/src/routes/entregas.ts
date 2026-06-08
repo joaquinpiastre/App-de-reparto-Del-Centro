@@ -38,6 +38,22 @@ function requireAdmin(req: ReqWithUser, res: { status: (n: number) => { json: (b
   return true;
 }
 
+// Consumo aproximado por hora de ruta urbana de reparto, estimado a partir de
+// una velocidad promedio típica y el consumo cada 100 km de cada vehículo
+// (moto ≈ 35 km/h x 2.5 L/100km, auto ≈ 30 km/h x 8.5 L/100km).
+const LITROS_POR_HORA: Record<'auto' | 'moto', number> = {
+  moto: 0.9,
+  auto: 2.6,
+};
+
+const DIAS_SEMANA = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+async function ensureTipoVehiculoColumn(): Promise<void> {
+  await pool.query(
+    `alter table repartidores add column if not exists tipo_vehiculo text not null default 'moto'`
+  );
+}
+
 function normalizeImagePayload(value?: string | null, mime = 'image/png'): string | null {
   if (!value) return null;
   const raw = String(value).trim();
@@ -383,5 +399,88 @@ entregasRouter.get('/admin-reportes/stats', requireAuth, async (req, res) => {
       nombre: x.nombre,
       entregas: Number(x.entregas ?? 0),
     })),
+  });
+});
+
+entregasRouter.get('/admin-reportes/inicio', requireAuth, async (req, res) => {
+  if (!requireAdmin(req as ReqWithUser, res)) return;
+  await ensureCierresTable();
+  await ensureTipoVehiculoColumn();
+
+  const [topClientesRes, combustibleRes, visitasPorDiaRes, paradaRes] = await Promise.all([
+    pool.query(
+      `select c.id, c.nombre, c.direccion, c.tipo,
+              count(*)::int as visitas
+         from asignaciones a
+         join clientes c on c.id = a.cliente_id
+        where a.estado = 'entregado'
+        group by c.id, c.nombre, c.direccion, c.tipo
+        order by visitas desc, c.nombre asc
+        limit 8`
+    ),
+    pool.query(
+      `select r.id, r.nombre, r.tipo_vehiculo as "tipoVehiculo",
+              coalesce(sum(cj.minutos_en_ruta), 0)::int as "minutosEnRuta"
+         from repartidores r
+         left join cierres_jornada cj on cj.repartidor_id = r.id
+        where r.rol = 'repartidor' and r.activo = true
+        group by r.id, r.nombre, r.tipo_vehiculo
+        order by "minutosEnRuta" desc, r.nombre asc`
+    ),
+    pool.query(
+      `select extract(isodow from a.fecha_programada)::int as dia,
+              count(*)::int as visitas
+         from asignaciones a
+        where a.estado = 'entregado'
+        group by dia`
+    ),
+    pool.query(
+      `select coalesce(avg(tiempo_parada_segundos), 0)::int as promedio
+         from entregas
+        where tiempo_parada_segundos is not null and tiempo_parada_segundos > 0`
+    ),
+  ]);
+
+  const topClientes = (
+    topClientesRes.rows as Array<{
+      id: string;
+      nombre: string;
+      direccion: string;
+      tipo: 'cliente' | 'taller';
+      visitas: number;
+    }>
+  ).map((c) => ({ ...c, visitas: Number(c.visitas ?? 0) }));
+
+  const porRepartidor = (
+    combustibleRes.rows as Array<{
+      id: string;
+      nombre: string;
+      tipoVehiculo: string;
+      minutosEnRuta: number;
+    }>
+  ).map((r) => {
+    const tipoVehiculo: 'auto' | 'moto' = r.tipoVehiculo === 'auto' ? 'auto' : 'moto';
+    const minutosEnRuta = Number(r.minutosEnRuta ?? 0);
+    const litrosEstimados = Math.round((minutosEnRuta / 60) * LITROS_POR_HORA[tipoVehiculo] * 10) / 10;
+    return { id: r.id, nombre: r.nombre, tipoVehiculo, minutosEnRuta, litrosEstimados };
+  });
+  const totalLitrosEstimados = Math.round(porRepartidor.reduce((acc, r) => acc + r.litrosEstimados, 0) * 10) / 10;
+
+  const visitasPorDiaMap = new Map<number, number>();
+  for (const row of visitasPorDiaRes.rows as Array<{ dia: number; visitas: number }>) {
+    visitasPorDiaMap.set(Number(row.dia), Number(row.visitas ?? 0));
+  }
+  const visitasPorDia = {
+    labels: DIAS_SEMANA,
+    valores: DIAS_SEMANA.map((_d, i) => visitasPorDiaMap.get(i + 1) ?? 0),
+  };
+
+  const promedioSegundos = Number((paradaRes.rows[0] as { promedio: number } | undefined)?.promedio ?? 0);
+
+  res.json({
+    topClientes,
+    combustible: { porRepartidor, totalLitrosEstimados },
+    visitasPorDia,
+    promedioParadaMinutos: Math.round(promedioSegundos / 60),
   });
 });
