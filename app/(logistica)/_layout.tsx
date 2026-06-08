@@ -63,6 +63,13 @@ function LogisticaTabs() {
             tabBarIcon: ({ color, focused }) => <MaterialIcons name="storefront" size={focused ? 23 : 21} color={color} />,
           }}
         />
+        <Tabs.Screen
+          name="cuenta"
+          options={{
+            title: 'Cuenta',
+            tabBarIcon: ({ color, focused }) => <MaterialIcons name="logout" size={focused ? 23 : 21} color={color} />,
+          }}
+        />
       </Tabs>
     </View>
   );
