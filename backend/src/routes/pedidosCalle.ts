@@ -90,7 +90,13 @@ pedidosCalleRouter.get('/pedidos-calle', requireAuth, async (req, res) => {
      group by p.id
      order by p.creado_en_ms desc`
   );
-  res.json({ pedidos: rows });
+  res.json({
+    pedidos: rows.map((r) => ({
+      ...r,
+      creadoEn: Number(r.creadoEn ?? 0),
+      total: Number(r.total ?? 0),
+    })),
+  });
 });
 
 pedidosCalleRouter.post('/pedidos-calle', requireAuth, async (req, res) => {

@@ -465,7 +465,7 @@ export default function Historial() {
               </View>
               {/* Fecha + calle */}
               <Text style={styles.pedidoFecha}>
-                {new Date(p.creadoEn).toLocaleString('es-AR', {
+                {new Date(Number(p.creadoEn)).toLocaleString('es-AR', {
                   weekday: 'short', day: '2-digit', month: 'short',
                   hour: '2-digit', minute: '2-digit',
                 })}

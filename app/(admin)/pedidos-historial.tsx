@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { Screen } from '@/components/ui/Screen';
 import { Button } from '@/components/ui/Button';
 import { COLORS } from '@/constants/colors';
-import { obtenerTodosLosPedidosCalle } from '@/services/pedidosCalle';
+import { actualizarEstadoPedidoCalle, obtenerTodosLosPedidosCalle } from '@/services/pedidosCalle';
 import type { EstadoPedidoCalle, PedidoCalle } from '@/types';
 
 const ESTADOS: { label: string; value: EstadoPedidoCalle | 'todos' }[] = [
@@ -18,6 +18,18 @@ const ESTADOS: { label: string; value: EstadoPedidoCalle | 'todos' }[] = [
   { label: 'Cancelado', value: 'cancelado' },
 ];
 
+const ESTADOS_EDITABLES = ESTADOS.filter(
+  (e): e is { label: string; value: EstadoPedidoCalle } => e.value !== 'todos'
+);
+
+function avisar(mensaje: string) {
+  if (Platform.OS === 'web') {
+    globalThis.alert?.(mensaje);
+  } else {
+    Alert.alert('Error', mensaje);
+  }
+}
+
 const ESTADO_COLOR: Record<string, string> = {
   pendiente: '#f59e0b',
   visto: '#3b82f6',
@@ -29,7 +41,7 @@ const ESTADO_COLOR: Record<string, string> = {
 
 function fmtFecha(ms: number) {
   try {
-    return new Date(ms).toLocaleString('es-AR', {
+    return new Date(Number(ms)).toLocaleString('es-AR', {
       weekday: 'short',
       day: '2-digit',
       month: 'short',
@@ -47,6 +59,20 @@ export default function PedidosHistorial() {
   const [loading, setLoading] = useState(false);
   const [filtroEstado, setFiltroEstado] = useState<EstadoPedidoCalle | 'todos'>('todos');
   const [busqueda, setBusqueda] = useState('');
+  const [cambiandoId, setCambiandoId] = useState<string | null>(null);
+
+  const cambiarEstado = async (pedido: PedidoCalle, estado: EstadoPedidoCalle) => {
+    if (estado === pedido.estado || cambiandoId) return;
+    try {
+      setCambiandoId(pedido.id);
+      await actualizarEstadoPedidoCalle(pedido.id, estado);
+      setTodos((prev) => prev.map((p) => (p.id === pedido.id ? { ...p, estado } : p)));
+    } catch (e) {
+      avisar(e instanceof Error ? e.message : 'No se pudo actualizar el estado.');
+    } finally {
+      setCambiandoId(null);
+    }
+  };
 
   const cargar = async () => {
     try {
@@ -187,6 +213,33 @@ export default function PedidosHistorial() {
             {p.notas?.trim() ? (
               <Text style={styles.notas}>📝 {p.notas}</Text>
             ) : null}
+
+            {/* Cambiar estado */}
+            <View style={styles.cambiarEstadoBox}>
+              <Text style={styles.cambiarEstadoLabel}>Cambiar estado:</Text>
+              <View style={styles.cambiarEstadoRow}>
+                {ESTADOS_EDITABLES.map((e) => {
+                  const activo = p.estado === e.value;
+                  const color = ESTADO_COLOR[e.value] ?? COLORS.verdeOscuro;
+                  return (
+                    <View
+                      key={e.value}
+                      style={[
+                        styles.estadoOpcion,
+                        activo && { backgroundColor: color, borderColor: color },
+                      ]}
+                    >
+                      <Text
+                        style={[styles.estadoOpcionTxt, activo && styles.estadoOpcionTxtActivo]}
+                        onPress={() => void cambiarEstado(p, e.value)}
+                      >
+                        {cambiandoId === p.id && !activo ? '…' : e.label}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
           </View>
         ))
       )}
@@ -353,5 +406,37 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.grisSecundario,
     fontStyle: 'italic',
+  },
+  cambiarEstadoBox: {
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    paddingTop: 8,
+    gap: 6,
+  },
+  cambiarEstadoLabel: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 12,
+    color: COLORS.grisSecundario,
+  },
+  cambiarEstadoRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  estadoOpcion: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#dcdcdc',
+  },
+  estadoOpcionTxt: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 12,
+    color: COLORS.grisTexto,
+  },
+  estadoOpcionTxtActivo: {
+    color: '#fff',
   },
 });

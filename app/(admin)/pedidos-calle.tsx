@@ -11,7 +11,7 @@ import type { EstadoPedidoCalle, PedidoCalle } from '@/types';
 
 function fmtFecha(ts: number) {
   try {
-    return new Date(ts).toLocaleString('es-AR', {
+    return new Date(Number(ts)).toLocaleString('es-AR', {
       day: '2-digit',
       month: 'short',
       hour: '2-digit',

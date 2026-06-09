@@ -316,7 +316,7 @@ entregasRouter.get('/admin-reportes/historial/:jornadaId/pedidos', requireAuth, 
   );
 
   res.json({
-    pedidos: todos.map((r) => ({ ...r, total: Number(r.total ?? 0) })),
+    pedidos: todos.map((r) => ({ ...r, creadoEn: Number(r.creadoEn ?? 0), total: Number(r.total ?? 0) })),
   });
 });
 

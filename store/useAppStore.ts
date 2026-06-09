@@ -17,6 +17,7 @@ const BASE_COORDENADAS = { lat: -34.6177, lng: -68.3301 };
 // ─── Cola de sincronización offline ──────────────────────────────────────────
 // Cuando no hay red al confirmar una visita, se encola para reintentar después.
 const SYNC_KEY = 'visitas_pendientes_sync';
+const ROUTE_ORDER_KEY = 'jornada_client_order';
 interface PendienteSync {
   asigId: string;
   estado: EstadoEntrega;
@@ -167,10 +168,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const epoch = Date.now();
     const { clientesDelDia, jornadaId } = get();
     const cliente = clientesDelDia[index];
-    set({ clienteActualIndex: index, viajeIniciadoEpoch: epoch });
+    // Atomic update: mark new client as en_camino, clear any previous en_camino (bug: multiple simultaneous)
+    set((s) => ({
+      clienteActualIndex: index,
+      viajeIniciadoEpoch: epoch,
+      clientesDelDia: s.clientesDelDia.map((c, idx) => {
+        if (idx === index) return { ...c, estado: 'en_camino' as const };
+        if (c.estado === 'en_camino') return { ...c, estado: 'pendiente' as const };
+        return c;
+      }),
+    }));
     if (cliente) {
-      // Marcar en_camino localmente — elección explícita del repartidor al presionar VISITAR
-      get().marcarClienteEstado(cliente.id, 'en_camino');
       // Registrar hora_llegada en el backend aquí (no en useFocusEffect) para evitar
       // que el efecto se re-dispare cuando siguienteCliente() cambia clienteActualIndex
       void actualizarEstadoAsignacion(cliente.id, 'en_camino', {
@@ -178,8 +186,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
         jornadaId: jornadaId ?? undefined,
       }).catch(() => {});
     }
-    void AsyncStorage.setItem('viaje_epoch', String(epoch));
-    void AsyncStorage.setItem('viaje_index', String(index));
+    // viaje_asig_id identifica qué cliente estaba siendo visitado — más preciso que el índice
+    void AsyncStorage.multiSet([
+      ['viaje_epoch', String(epoch)],
+      ['viaje_index', String(index)],
+      ['viaje_asig_id', cliente?.id ?? ''],
+    ]);
   },
 
   iniciarJornada: async () => {
@@ -224,6 +236,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     void AsyncStorage.multiSet([
       ['jornada_activa_id', jornadaId],
       ['jornada_inicio_epoch', String(jornadaInicioEpoch)],
+      [ROUTE_ORDER_KEY, JSON.stringify(clientes.map((c) => c.id))],
     ]);
     if (usuario?.id) {
       await iniciarGPS(jornadaId, usuario.id, usuario.nombre).catch((err) => {
@@ -281,7 +294,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       entregaTimerSegundos: 0,
       viajeIniciadoEpoch: null,
     });
-    void AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index', 'jornada_activa_id', 'jornada_inicio_epoch']);
+    void AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index', 'viaje_asig_id', 'jornada_activa_id', 'jornada_inicio_epoch', ROUTE_ORDER_KEY]);
     // Revertir a presencia: el admin sigue viendo al repartidor aunque terminó el turno
     await detenerGPS(true).catch((err) => console.warn('detenerGPS:', err));
 
@@ -320,7 +333,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       fotoPendienteUri: null,
       entregaTimerSegundos: 0,
     });
-    void AsyncStorage.multiRemove(['jornada_activa_id', 'jornada_inicio_epoch']).catch(() => {});
+    void AsyncStorage.multiRemove(['jornada_activa_id', 'jornada_inicio_epoch', 'viaje_epoch', 'viaje_index', 'viaje_asig_id', ROUTE_ORDER_KEY]).catch(() => {});
     // Parada completa del GPS en logout
     void detenerGPS(false).catch((err) => console.warn('detenerGPS logout:', err));
   },
@@ -328,9 +341,28 @@ export const useAppStore = create<AppStore>((set, get) => ({
   restaurarJornada: async () => {
     const { usuario } = get();
     if (!usuario) return;
-    const [[, jornadaActivaId], [, jornadaEpochStr], [, viajeEpochStr]] =
-      await AsyncStorage.multiGet(['jornada_activa_id', 'jornada_inicio_epoch', 'viaje_epoch']);
+    const [[, jornadaActivaId], [, jornadaEpochStr], [, viajeEpochStr], [, viajeAsigId], [, routeOrderStr]] =
+      await AsyncStorage.multiGet([
+        'jornada_activa_id',
+        'jornada_inicio_epoch',
+        'viaje_epoch',
+        'viaje_asig_id',
+        ROUTE_ORDER_KEY,
+      ]);
     if (!jornadaActivaId || !jornadaEpochStr) return;
+
+    // Leer la cola offline para aplicar estados locales aunque aún no se haya reintentado
+    let queuedEstados: Record<string, EstadoEntrega> = {};
+    try {
+      const queueStr = await AsyncStorage.getItem(SYNC_KEY);
+      if (queueStr) {
+        const lista = JSON.parse(queueStr) as PendienteSync[];
+        for (const p of lista) queuedEstados[p.asigId] = p.estado;
+      }
+    } catch {
+      // Silencioso
+    }
+
     // Intentar sincronizar visitas que quedaron pendientes sin red
     void reintentarSincronizaciones();
     try {
@@ -338,9 +370,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const todasOrdenadas = [...asignaciones].sort((a, b) => a.orden - b.orden);
       const activas = todasOrdenadas.filter((a) => a.estado === 'pendiente' || a.estado === 'en_camino');
 
-      if (activas.length === 0) {
+      if (activas.length === 0 && Object.keys(queuedEstados).length === 0) {
         // Jornada ya finalizada → limpiar claves
-        await AsyncStorage.multiRemove(['jornada_activa_id', 'jornada_inicio_epoch', 'viaje_epoch', 'viaje_index']);
+        await AsyncStorage.multiRemove(['jornada_activa_id', 'jornada_inicio_epoch', 'viaje_epoch', 'viaje_index', 'viaje_asig_id', ROUTE_ORDER_KEY]);
         return;
       }
 
@@ -349,29 +381,56 @@ export const useAppStore = create<AppStore>((set, get) => ({
       // se reinicie (crash, Android matando el proceso, etc.) desaparece de la
       // lista del repartidor —aunque el backend ya la tenga como "entregado" y
       // el admin la vea—, dando la falsa impresión de que no se registró.
-      // Preservar también el estado en_camino: el rep estaba yendo a ese cliente cuando murió la app
-      const clientes = optimizarRuta(
-        todasOrdenadas.map((a, idx) => {
-          const c = asignacionToCliente(a, idx);
-          return a.estado === 'en_camino' ? { ...c, estado: 'en_camino' as const } : c;
-        })
-      );
+      // Preservar también el estado en_camino: el rep estaba yendo a ese cliente cuando murió la app.
+      // Aplicar overrides de la cola offline: visitas que se marcaron sin red todavía no están en el backend.
+      const clientesBase = todasOrdenadas.map((a, idx) => {
+        const c = asignacionToCliente(a, idx);
+        const override = queuedEstados[a.id];
+        if (override) return { ...c, estado: override };
+        if (a.estado === 'en_camino') return { ...c, estado: 'en_camino' as const };
+        return c;
+      });
 
-      // Encontrar el cliente en_camino (o si no hay, el primer pendiente) para restaurar el índice
-      const enCaminoIdx = clientes.findIndex((c) => c.estado === 'en_camino');
-      const primerPendienteIdx = clientes.findIndex((c) => c.estado === 'pendiente');
-      const clienteActualIndex = enCaminoIdx >= 0 ? enCaminoIdx : Math.max(primerPendienteIdx, 0);
+      // Usar el orden guardado al inicio de la jornada en lugar de volver a ejecutar
+      // optimizarRuta (que produce un orden diferente al incluir clientes ya completados)
+      let clientes: Cliente[];
+      if (routeOrderStr) {
+        const savedOrder = JSON.parse(routeOrderStr) as string[];
+        const byId = new Map(clientesBase.map((c) => [c.id, c]));
+        const ordered = savedOrder.map((id) => byId.get(id)).filter((c): c is Cliente => c !== undefined);
+        const inOrder = new Set(savedOrder);
+        const extra = clientesBase.filter((c) => !inOrder.has(c.id));
+        clientes = [...ordered, ...extra];
+      } else {
+        clientes = clientesBase; // fallback: orden del servidor
+      }
+
+      // Restaurar índice: priorizar viaje_asig_id (exacto), luego en_camino, luego primer pendiente
+      let clienteActualIndex: number;
+      if (viajeAsigId) {
+        const byAsigId = clientes.findIndex((c) => c.id === viajeAsigId);
+        clienteActualIndex =
+          byAsigId >= 0
+            ? byAsigId
+            : Math.max(clientes.findIndex((c) => c.estado === 'pendiente' || c.estado === 'en_camino'), 0);
+      } else {
+        const enCaminoIdx = clientes.findIndex((c) => c.estado === 'en_camino');
+        const primerPendienteIdx = clientes.findIndex((c) => c.estado === 'pendiente');
+        clienteActualIndex = enCaminoIdx >= 0 ? enCaminoIdx : Math.max(primerPendienteIdx, 0);
+      }
 
       let viajeIniciadoEpoch: number | null = null;
-      if (enCaminoIdx >= 0) {
-        // Preferir el epoch guardado (momento en que salió); fallback: hora_llegada del backend
-        const asigEnCamino = activas.find((a) => a.id === clientes[enCaminoIdx].id);
+      const clienteActual = clientes[clienteActualIndex];
+      if (viajeAsigId || clienteActual?.estado === 'en_camino') {
+        const targetId = viajeAsigId ?? clienteActual?.id;
+        const asigEnCamino = activas.find((a) => a.id === targetId);
+        // Preferir el epoch guardado (momento exacto en que salió); fallback: hora_llegada del backend
         viajeIniciadoEpoch = viajeEpochStr
           ? Number(viajeEpochStr)
           : (asigEnCamino?.horaLlegadaMs ?? null);
       }
 
-      await AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index']);
+      await AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index', 'viaje_asig_id']);
       set({
         jornadaActiva: true,
         gpsActivo: true,
@@ -445,7 +504,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       });
     });
     set({ fotoPendienteUri: null, viajeIniciadoEpoch: null });
-    void AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index']);
+    void AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index', 'viaje_asig_id']);
     get().siguienteCliente();
   },
 
@@ -454,7 +513,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const c = clientesDelDia[clienteActualIndex];
     if (!c) return;
     set({ viajeIniciadoEpoch: null });
-    void AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index']);
+    void AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index', 'viaje_asig_id']);
     get().actualizarCliente(c.id, { estado: 'problema', notasRepartidor: nota });
     void actualizarEstadoAsignacion(c.id, 'problema', {
       notasRepartidor: nota,
