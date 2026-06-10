@@ -122,6 +122,75 @@ gpsRouter.post('/gps/update', requireMobileKeyOrAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// Endpoint compatible con el protocolo OsmAnd (usado por la app "Traccar Client").
+// Se expone sin auth porque Traccar Client no permite mandar headers Authorization;
+// la validación es que `id` coincida con un repartidor existente en la base.
+// GET /gps/traccar?id=<repartidorId>&lat=...&lon=...&timestamp=...&speed=...&accuracy=...
+gpsRouter.get('/gps/traccar', async (req, res) => {
+  const id = typeof req.query.id === 'string' ? req.query.id : '';
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lon);
+  if (!id || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    res.status(400).send('invalid');
+    return;
+  }
+
+  const repartidor = await pool.query<{ id: string }>(
+    `select id from repartidores where id = $1`,
+    [id]
+  );
+  if (repartidor.rowCount === 0) {
+    res.status(404).send('unknown device');
+    return;
+  }
+
+  let timestampMs = Number(req.query.timestamp);
+  if (!Number.isFinite(timestampMs) || timestampMs <= 0) {
+    timestampMs = Date.now();
+  } else if (timestampMs < 10_000_000_000) {
+    timestampMs *= 1000; // OsmAnd manda timestamp en segundos
+  }
+
+  const velocidad = Number(req.query.speed);
+  const precision = Number(req.query.accuracy);
+
+  // Reusar la jornada abierta más reciente (real o de presencia); si no hay ninguna, crear una de presencia
+  const jornadaAbierta = await pool.query<{ id: string }>(
+    `select id from jornadas where repartidor_id = $1 and estado = 'abierta' order by iniciada_en desc limit 1`,
+    [id]
+  );
+  let jornadaId: string;
+  if (jornadaAbierta.rowCount && jornadaAbierta.rowCount > 0) {
+    jornadaId = jornadaAbierta.rows[0].id;
+  } else {
+    const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    jornadaId = `pres-${id}-${fecha}`;
+    await pool.query(
+      `insert into jornadas (id, repartidor_id, iniciada_en, estado)
+       values ($1, $2, now(), 'abierta')
+       on conflict (id) do nothing`,
+      [jornadaId, id]
+    );
+  }
+
+  await pool.query(
+    `insert into gps_points
+    (jornada_id, repartidor_id, lat, lng, velocidad, precision, timestamp_ms)
+    values ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      jornadaId,
+      id,
+      lat,
+      lng,
+      Number.isFinite(velocidad) ? velocidad : null,
+      Number.isFinite(precision) ? precision : null,
+      timestampMs,
+    ]
+  );
+
+  res.status(200).send('OK');
+});
+
 gpsRouter.get('/gps/live', requireAuth, async (_req, res) => {
   const { rows } = await pool.query<{
     id: string;
