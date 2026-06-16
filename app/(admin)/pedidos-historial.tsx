@@ -197,9 +197,16 @@ export default function PedidosHistorial() {
               <View style={styles.itemsBox}>
                 {p.items.map((it, idx) => (
                   <View key={`${p.id}-${idx}`} style={styles.itemFila}>
-                    <Text style={styles.itemDesc} numberOfLines={2}>
-                      {it.cantidad} × {it.descripcion}
-                    </Text>
+                    <View style={styles.itemDescRow}>
+                      {it.codigo ? (
+                        <View style={styles.codigoBadge}>
+                          <Text style={styles.codigoBadgeTxt}>{it.codigo}</Text>
+                        </View>
+                      ) : null}
+                      <Text style={styles.itemDesc} numberOfLines={2}>
+                        {it.cantidad} × {it.descripcion}
+                      </Text>
+                    </View>
                     <Text style={styles.itemPrecio}>${Number(it.subtotal ?? 0).toFixed(2)}</Text>
                   </View>
                 ))}
@@ -377,6 +384,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: 8,
+  },
+  itemDescRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  codigoBadge: {
+    backgroundColor: '#22c55e',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+  },
+  codigoBadgeTxt: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 11,
+    color: '#fff',
   },
   itemDesc: {
     fontFamily: 'Poppins_400Regular',
