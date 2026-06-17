@@ -77,12 +77,16 @@ function buildAck(protocol: number, serial: number): Buffer {
 
 // ─── Decoders ─────────────────────────────────────────────────────────────────
 function decodeImei(buf: Buffer): string {
-  let imei = '';
+  let s = '';
   for (const byte of buf) {
-    imei += ((byte >> 4) & 0x0F).toString(16);
-    imei += (byte & 0x0F).toString(16);
+    s += ((byte >> 4) & 0x0F).toString(16);
+    s += (byte & 0x0F).toString(16);
   }
-  return imei.replace('f', '').slice(0, 15);
+  // GT06E: relleno 0 al inicio → tomar los últimos 15 nibbles
+  if (s.length === 16 && s[0] === '0') return s.slice(1);
+  // GT06 clásico: relleno F al final → tomar los primeros 15 nibbles
+  if (s.length === 16 && s[15] === 'f') return s.slice(0, 15);
+  return s.slice(0, 15);
 }
 
 function bcdToDec(byte: number): number {
