@@ -215,13 +215,17 @@ async function handlePacket(
 
       const location = decodeLocation(packet.data);
       if (!location) return null;
-      if (!location.validFix) return null;
+      if (!location.validFix) {
+        console.log(`[GT06] Sin fix GPS (sats=${location.satellites}) — esperando señal satelital`);
+        return null;
+      }
 
       const repartidor = await getRepartidorByImei(imei);
       if (!repartidor) {
         console.warn(`[GT06] IMEI ${imei} no registrado en dispositivos_gps`);
         return null;
       }
+      console.log(`[GT06] GPS guardado: ${repartidor.nombre} lat=${location.lat.toFixed(5)} lng=${location.lng.toFixed(5)}`);
       await saveGpsPoint(repartidor.repartidorId, location);
       return null;
     }
