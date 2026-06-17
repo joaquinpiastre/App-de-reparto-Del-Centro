@@ -45,7 +45,15 @@
       }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "name": "Del Centro Reparto",
+      "shortName": "Del Centro",
+      "lang": "es",
+      "themeColor": "#6DC921",
+      "backgroundColor": "#1a5c08",
+      "display": "standalone",
+      "orientation": "portrait",
+      "startUrl": "/"
     },
     "plugins": [
       "expo-router",

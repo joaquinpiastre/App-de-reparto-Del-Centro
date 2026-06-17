@@ -69,10 +69,12 @@ export default function LoginScreen() {
         <Text style={styles.titulo}>Sistema de Reparto</Text>
         {Platform.OS === 'web' ? (
           <View style={styles.webBanner}>
-            <Text style={styles.webBannerTitle}>Panel web (computadora)</Text>
+            <Text style={styles.webBannerTitle}>Acceso desde el navegador</Text>
             <Text style={styles.webBannerText}>
-              Ingresá con usuarios reales creados en el backend. El seguimiento de rutas y pedidos en tiempo real
-              requiere conexión y API operativa.
+              {'iPhone: '}
+              <Text style={styles.webBannerBold}>Compartir → Agregar a pantalla de inicio{'\n'}</Text>
+              {'Android: '}
+              <Text style={styles.webBannerBold}>Menú ⋮ → Instalar app</Text>
             </Text>
           </View>
         ) : null}
@@ -124,6 +126,7 @@ const styles = StyleSheet.create({
   },
   webBannerTitle: { fontFamily: 'Poppins_700Bold', color: COLORS.verdeOscuro, marginBottom: 6 },
   webBannerText: { fontFamily: 'Poppins_400Regular', color: COLORS.grisTexto, fontSize: 13, lineHeight: 20 },
+  webBannerBold: { fontFamily: 'Poppins_600SemiBold', color: COLORS.verdeOscuro },
   input: {
     borderWidth: 1,
     borderColor: '#dcdcdc',
