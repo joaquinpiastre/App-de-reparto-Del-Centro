@@ -198,6 +198,7 @@ gpsRouter.get('/gps/traccar', async (req, res) => {
 });
 
 gpsRouter.get('/gps/live', requireAuth, async (_req, res) => {
+  res.set('Cache-Control', 'no-store');
   const { rows } = await pool.query<{
     id: string;
     nombre: string;
