@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Platform,
@@ -44,6 +44,7 @@ export default function PedidoCalleScreen() {
   const [notas, setNotas] = useState('');
   const [lineas, setLineas] = useState<LineaPedidoCalle[]>([]);
   const [enviando, setEnviando] = useState(false);
+  const enviandoRef = useRef(false);
 
   const [descManual, setDescManual] = useState('');
   const [precioManual, setPrecioManual] = useState('');
@@ -160,6 +161,7 @@ export default function PedidoCalleScreen() {
   };
 
   const enviarPedido = async () => {
+    if (enviandoRef.current) return; // evita duplicados por doble-tap antes de que se actualice el estado
     if (!usuario) {
       Alert.alert('Sesión', 'Volvé a iniciar sesión.');
       return;
@@ -173,6 +175,7 @@ export default function PedidoCalleScreen() {
       return;
     }
     try {
+      enviandoRef.current = true;
       setEnviando(true);
       const calleMostrada = calleRef.trim();
       await publicarPedidoCalle({
@@ -199,6 +202,7 @@ export default function PedidoCalleScreen() {
       console.warn(e);
       Alert.alert('Error', 'No se pudo publicar el pedido.');
     } finally {
+      enviandoRef.current = false;
       setEnviando(false);
     }
   };
