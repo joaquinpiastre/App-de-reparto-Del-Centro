@@ -225,7 +225,15 @@ async function handlePacket(
         console.warn(`[GT06] IMEI ${imei} no registrado en dispositivos_gps`);
         return null;
       }
-      console.log(`[GT06] GPS guardado: ${repartidor.nombre} lat=${location.lat.toFixed(5)} lng=${location.lng.toFixed(5)}`);
+      // El reloj del tracker puede no estar sincronizado (sin fix prolongado, batería de RTC, etc.)
+      // Si el timestamp decodificado se aleja mucho de la hora real, usamos la hora del servidor
+      // para que el punto no quede fuera del filtro de "últimas 24h" en /gps/live.
+      const diffMs = Math.abs(Date.now() - location.timestampMs);
+      if (diffMs > 6 * 60 * 60 * 1000) {
+        console.warn(`[GT06] Timestamp GPS desviado ${Math.round(diffMs / 60000)} min (device=${new Date(location.timestampMs).toISOString()}) — uso hora del servidor`);
+        location.timestampMs = Date.now();
+      }
+      console.log(`[GT06] GPS guardado: ${repartidor.nombre} lat=${location.lat.toFixed(5)} lng=${location.lng.toFixed(5)} ts=${new Date(location.timestampMs).toISOString()}`);
       await saveGpsPoint(repartidor.repartidorId, location);
       return null;
     }
