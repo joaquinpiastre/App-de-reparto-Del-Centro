@@ -1,31 +1,26 @@
 /**
  * Servidor TCP para el protocolo GT06 (Concox GT06E y compatibles).
  *
- * El tracker se conecta por TCP, manda un paquete de login con su IMEI,
- * y luego envía paquetes de ubicación periódicamente.
- * Este servidor responde los ACKs necesarios y guarda los puntos en gps_points
- * usando la misma lógica que el endpoint /gps/traccar.
- *
  * Protocolo GT06 — paquete corto:
  *   [0x78 0x78] [len:1] [protocol:1] [data:N] [serial:2] [crc:2] [0x0D 0x0A]
- *   len = proto(1) + data(N) + serial(2) + crc(2)
- *   CRC cubre: len_byte + proto + data + serial (= len-1 bytes desde buf[2])
- *   Tamaño total del paquete = len + 5
+ *   len = proto(1) + data(N) + serial(2)  — NO incluye los 2 bytes de CRC
+ *   CRC cubre: len_byte + proto + data + serial = buf.slice(2, len+3)
+ *   Tamaño total del paquete = len + 7
  */
 
 import net from 'net';
 import { pool } from '../db/client.js';
 
-// ─── CRC16-CCITT (XModem) ────────────────────────────────────────────────────
+// ─── CRC-16/IBM-SDLC (CRC-B) — algoritmo reflejado usado por GT06 ────────────
 function crc16(buf: Buffer): number {
   let crc = 0xFFFF;
   for (const byte of buf) {
-    crc ^= byte << 8;
+    crc ^= byte;
     for (let i = 0; i < 8; i++) {
-      crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xFFFF : (crc << 1) & 0xFFFF;
+      crc = (crc & 1) ? ((crc >>> 1) ^ 0x8408) : (crc >>> 1);
     }
   }
-  return crc;
+  return (crc ^ 0xFFFF) & 0xFFFF;
 }
 
 // ─── Framing ──────────────────────────────────────────────────────────────────
@@ -41,19 +36,20 @@ function tryParsePacket(buf: Buffer): Packet | null {
   if (buf[0] !== 0x78 || buf[1] !== 0x78) return null;
 
   const len = buf[2];
-  const totalLength = len + 5; // 2(start) + 1(len_byte) + len + 2(stop)
+  // len = proto(1) + data(N) + serial(2) — sin CRC
+  const totalLength = len + 7; // 2(start) + 1(len_byte) + len + 2(crc) + 2(stop)
   if (buf.length < totalLength) return null;
 
   const protocol = buf[3];
-  const dataLength = len - 5; // len - proto(1) - serial(2) - crc(2)
+  const dataLength = len - 3; // len - proto(1) - serial(2)
   if (dataLength < 0) return null;
 
   const data = buf.slice(4, 4 + dataLength);
   const serial = buf.readUInt16BE(4 + dataLength);
-  const crcReceived = buf.readUInt16BE(4 + dataLength + 2);
+  const crcReceived = buf.readUInt16BE(6 + dataLength);
 
-  // CRC cubre desde len_byte hasta último byte del serial
-  const crcCalc = crc16(buf.slice(2, len + 1));
+  // CRC cubre: len_byte + proto + data + serial
+  const crcCalc = crc16(buf.slice(2, len + 3));
   if (crcCalc !== crcReceived) {
     console.warn(
       `[GT06] CRC mismatch proto=0x${protocol.toString(16).padStart(2, '0')} ` +
@@ -65,15 +61,15 @@ function tryParsePacket(buf: Buffer): Packet | null {
 }
 
 function buildAck(protocol: number, serial: number): Buffer {
-  // Respuesta: 78 78 05 [proto] [serial:2] [crc:2] 0D 0A
-  const len = 5; // proto(1) + serial(2) + crc(2)
-  const pkt = Buffer.alloc(10);
+  // len = proto(1) + serial(2) = 3 — sin datos, sin CRC en len
+  const len = 3;
+  const pkt = Buffer.alloc(10); // len + 7
   pkt[0] = 0x78;
   pkt[1] = 0x78;
   pkt[2] = len;
   pkt[3] = protocol;
   pkt.writeUInt16BE(serial, 4);
-  pkt.writeUInt16BE(crc16(pkt.slice(2, len + 1)), 6);
+  pkt.writeUInt16BE(crc16(pkt.slice(2, len + 3)), 6);
   pkt[8] = 0x0D;
   pkt[9] = 0x0A;
   return pkt;
@@ -86,7 +82,7 @@ function decodeImei(buf: Buffer): string {
     imei += ((byte >> 4) & 0x0F).toString(16);
     imei += (byte & 0x0F).toString(16);
   }
-  return imei.slice(0, 15);
+  return imei.replace('f', '').slice(0, 15);
 }
 
 function bcdToDec(byte: number): number {
@@ -113,19 +109,11 @@ function decodeLocation(data: Buffer): LocationData | null {
   const sec   = bcdToDec(data[5]);
 
   const satellites = (data[6] >> 4) & 0x0F;
-
-  // Lat y Lng como uint32 big-endian, escala: grados * 1,800,000
-  const latRaw = data.readUInt32BE(7);
-  const lngRaw = data.readUInt32BE(11);
+  const latRaw  = data.readUInt32BE(7);
+  const lngRaw  = data.readUInt32BE(11);
   const speedKmh = data[15];
+  const flags   = data.readUInt16BE(16);
 
-  // Flags word (2 bytes):
-  //   bits 9-0:  curso (heading)
-  //   bit 10:    1=Norte, 0=Sur
-  //   bit 11:    1=Este,  0=Oeste
-  //   bit 12:    GPS válido (fix)
-  //   bit 13:    GPS tiempo real
-  const flags = data.readUInt16BE(16);
   const isNorth  = (flags & 0x0400) !== 0; // bit 10
   const isEast   = (flags & 0x0800) !== 0; // bit 11
   const validFix = (flags & 0x1000) !== 0; // bit 12
@@ -152,10 +140,7 @@ async function getRepartidorByImei(imei: string): Promise<{ repartidorId: string
   return { repartidorId: rows[0].repartidor_id, nombre: rows[0].nombre };
 }
 
-async function saveGpsPoint(
-  repartidorId: string,
-  location: LocationData,
-): Promise<void> {
+async function saveGpsPoint(repartidorId: string, location: LocationData): Promise<void> {
   const jornadaAbierta = await pool.query<{ id: string }>(
     `select id from jornadas where repartidor_id = $1 and estado = 'abierta' order by iniciada_en desc limit 1`,
     [repartidorId]
@@ -178,21 +163,12 @@ async function saveGpsPoint(
   await pool.query(
     `insert into gps_points (jornada_id, repartidor_id, lat, lng, velocidad, precision, timestamp_ms)
      values ($1, $2, $3, $4, $5, $6, $7)`,
-    [
-      jornadaId,
-      repartidorId,
-      location.lat,
-      location.lng,
-      location.speedKmh,
-      null,
-      location.timestampMs,
-    ]
+    [jornadaId, repartidorId, location.lat, location.lng, location.speedKmh, null, location.timestampMs]
   );
 
   await pool.query(
-    `update dispositivos_gps set ultimo_contacto_ms = $1 where imei = (
-       select imei from dispositivos_gps where repartidor_id = $2 and activo = true limit 1
-     )`,
+    `update dispositivos_gps set ultimo_contacto_ms = $1
+     where imei = (select imei from dispositivos_gps where repartidor_id = $2 and activo = true limit 1)`,
     [Date.now(), repartidorId]
   );
 }
@@ -208,13 +184,14 @@ async function handlePacket(
   packet: Packet,
   imei: string | null,
 ): Promise<string | null> {
-  // Siempre respondemos ACK para mantener la conexión viva
   socket.write(buildAck(packet.protocol, packet.serial));
 
   switch (packet.protocol) {
     case PROTO_LOGIN: {
       if (packet.data.length < 8) return null;
-      const deviceImei = decodeImei(packet.data);
+      // El IMEI son siempre los últimos 8 bytes del data del login (BCD, 15 dígitos)
+      const imeiBytes = packet.data.slice(packet.data.length - 8);
+      const deviceImei = decodeImei(imeiBytes);
       console.log(`[GT06] Login IMEI=${deviceImei}`);
       return deviceImei;
     }
@@ -227,10 +204,8 @@ async function handlePacket(
       }
       const location = decodeLocation(packet.data);
       if (!location) return null;
-      if (!location.validFix) {
-        console.log(`[GT06] ${imei} sin fix GPS — ignorando punto`);
-        return null;
-      }
+      if (!location.validFix) return null;
+
       const repartidor = await getRepartidorByImei(imei);
       if (!repartidor) {
         console.warn(`[GT06] IMEI ${imei} no registrado en dispositivos_gps`);
@@ -241,11 +216,9 @@ async function handlePacket(
     }
 
     case PROTO_HEARTBEAT:
-      // Solo ACK, ya enviado
       return null;
 
     default:
-      console.log(`[GT06] Protocolo desconocido 0x${packet.protocol.toString(16).padStart(2, '0')} — ACK enviado`);
       return null;
   }
 }
@@ -263,7 +236,6 @@ export function iniciarServidorGT06(port: number): void {
       buffer = Buffer.concat([buffer, chunk]);
 
       while (buffer.length >= 10) {
-        // Buscar inicio de paquete válido
         if (buffer[0] !== 0x78 || buffer[1] !== 0x78) {
           const nextStart = buffer.indexOf(0x78, 1);
           buffer = nextStart >= 0 ? buffer.slice(nextStart) : Buffer.alloc(0);
@@ -271,17 +243,13 @@ export function iniciarServidorGT06(port: number): void {
         }
 
         const packet = tryParsePacket(buffer);
-        if (!packet) break; // paquete incompleto, esperar más datos
+        if (!packet) break;
 
         buffer = buffer.slice(packet.totalLength);
 
         handlePacket(socket, packet, deviceImei)
-          .then((imei) => {
-            if (imei) deviceImei = imei;
-          })
-          .catch((err: unknown) => {
-            console.error(`[GT06] Error procesando paquete:`, err);
-          });
+          .then((imei) => { if (imei) deviceImei = imei; })
+          .catch((err: unknown) => { console.error(`[GT06] Error procesando paquete:`, err); });
       }
     });
 
@@ -293,12 +261,8 @@ export function iniciarServidorGT06(port: number): void {
       console.log(`[GT06] Desconectado ${remote} (IMEI=${deviceImei ?? 'desconocido'})`);
     });
 
-    // Timeout: 5 minutos sin datos → cerrar conexión muerta
     socket.setTimeout(5 * 60 * 1000);
-    socket.on('timeout', () => {
-      console.log(`[GT06] Timeout ${remote} — cerrando`);
-      socket.destroy();
-    });
+    socket.on('timeout', () => { socket.destroy(); });
   });
 
   server.listen(port, () => {
