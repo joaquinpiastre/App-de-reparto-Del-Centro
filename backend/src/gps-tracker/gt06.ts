@@ -1,11 +1,11 @@
 /**
  * Servidor TCP para el protocolo GT06 (Concox GT06E y compatibles).
  *
- * Protocolo GT06 — paquete corto:
+ * Protocolo GT06E — paquete corto:
  *   [0x78 0x78] [len:1] [protocol:1] [data:N] [serial:2] [crc:2] [0x0D 0x0A]
- *   len = proto(1) + data(N) + serial(2)  — NO incluye los 2 bytes de CRC
- *   CRC cubre: len_byte + proto + data + serial = buf.slice(2, len+3)
- *   Tamaño total del paquete = len + 7
+ *   len = proto(1) + data(N) + serial(2) + CRC(2)  — incluye los bytes de CRC
+ *   CRC cubre: len_byte + proto + data + serial = buf.slice(2, len+1)
+ *   Tamaño total del paquete = len + 5
  */
 
 import net from 'net';
@@ -36,20 +36,20 @@ function tryParsePacket(buf: Buffer): Packet | null {
   if (buf[0] !== 0x78 || buf[1] !== 0x78) return null;
 
   const len = buf[2];
-  // len = proto(1) + data(N) + serial(2) — sin CRC
-  const totalLength = len + 7; // 2(start) + 1(len_byte) + len + 2(crc) + 2(stop)
+  // len = proto(1) + data(N) + serial(2) + CRC(2) — GT06E incluye CRC en len
+  const totalLength = len + 5; // 2(start) + 1(len_byte) + len + 2(stop)
   if (buf.length < totalLength) return null;
 
   const protocol = buf[3];
-  const dataLength = len - 3; // len - proto(1) - serial(2)
+  const dataLength = len - 5; // len - proto(1) - serial(2) - CRC(2)
   if (dataLength < 0) return null;
 
   const data = buf.slice(4, 4 + dataLength);
   const serial = buf.readUInt16BE(4 + dataLength);
-  const crcReceived = buf.readUInt16BE(6 + dataLength);
+  const crcReceived = buf.readUInt16BE(6 + dataLength); // = buf.readUInt16BE(len+1)
 
-  // CRC cubre: len_byte + proto + data + serial
-  const crcCalc = crc16(buf.slice(2, len + 3));
+  // CRC cubre: len_byte + proto + data + serial (todo lo anterior al CRC)
+  const crcCalc = crc16(buf.slice(2, len + 1));
   if (crcCalc !== crcReceived) {
     console.warn(
       `[GT06] CRC mismatch proto=0x${protocol.toString(16).padStart(2, '0')} ` +
@@ -61,15 +61,15 @@ function tryParsePacket(buf: Buffer): Packet | null {
 }
 
 function buildAck(protocol: number, serial: number): Buffer {
-  // len = proto(1) + serial(2) = 3 — sin datos, sin CRC en len
-  const len = 3;
-  const pkt = Buffer.alloc(10); // len + 7
+  // len = proto(1) + serial(2) + CRC(2) = 5 — GT06E incluye CRC en len
+  const len = 5;
+  const pkt = Buffer.alloc(10); // len + 5
   pkt[0] = 0x78;
   pkt[1] = 0x78;
   pkt[2] = len;
   pkt[3] = protocol;
   pkt.writeUInt16BE(serial, 4);
-  pkt.writeUInt16BE(crc16(pkt.slice(2, len + 3)), 6);
+  pkt.writeUInt16BE(crc16(pkt.slice(2, 6)), 6); // crc sobre [len, proto, serial]
   pkt[8] = 0x0D;
   pkt[9] = 0x0A;
   return pkt;
@@ -189,6 +189,7 @@ async function handlePacket(
   switch (packet.protocol) {
     case PROTO_LOGIN: {
       if (packet.data.length < 8) return null;
+      console.log(`[GT06] Login data(${packet.data.length}b): ${packet.data.toString('hex')}`);
       // El IMEI son siempre los últimos 8 bytes del data del login (BCD, 15 dígitos)
       const imeiBytes = packet.data.slice(packet.data.length - 8);
       const deviceImei = decodeImei(imeiBytes);
