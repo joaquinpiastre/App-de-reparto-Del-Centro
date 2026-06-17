@@ -22,6 +22,7 @@ function parseCorsOrigins(raw: string | undefined): string | string[] | boolean 
 export const config = {
   env: process.env.NODE_ENV ?? 'development',
   port: Number(process.env.PORT ?? 3000),
+  gt06Port: Number(process.env.GT06_PORT ?? 5023),
   databaseUrl: required('DATABASE_URL'),
   jwtSecret: required('JWT_SECRET'),
   corsOrigin: parseCorsOrigins(process.env.CORS_ORIGIN),

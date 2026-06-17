@@ -4,6 +4,12 @@ import { requireAuth, requireMobileKeyOrAuth } from '../auth.js';
 import { pool } from '../db/client.js';
 type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' | 'logistica' } };
 
+const dispositivoSchema = z.object({
+  imei: z.string().regex(/^\d{15}$/, 'IMEI debe ser 15 dígitos numéricos'),
+  repartidorId: z.string().min(3),
+  nombre: z.string().min(2),
+});
+
 const gpsUpdateSchema = z.object({
   jornadaId: z.string().min(3),
   repartidorId: z.string().min(3),
@@ -306,4 +312,56 @@ gpsRouter.get('/gps/jornadas/:jornadaId/recorrido', requireAuth, async (req, res
     }));
 
   res.json({ jornadaId, repartidorId, points, stops, visitStops });
+});
+
+// ─── Gestión de dispositivos GPS físicos (trackers GT06) ─────────────────────
+
+// GET /admin/dispositivos-gps — lista todos los trackers registrados
+gpsRouter.get('/admin/dispositivos-gps', requireAuth, async (req, res) => {
+  const user = (req as ReqWithUser).user;
+  if (user?.rol !== 'admin') { res.status(403).json({ error: 'No autorizado.' }); return; }
+
+  const { rows } = await pool.query<{
+    imei: string; repartidor_id: string; nombre: string;
+    activo: boolean; ultimo_contacto_ms: number | null;
+  }>(
+    `select d.imei, d.repartidor_id, d.nombre, d.activo, d.ultimo_contacto_ms
+     from dispositivos_gps d order by d.nombre`
+  );
+  res.json({ dispositivos: rows });
+});
+
+// POST /admin/dispositivos-gps — registra o actualiza un tracker
+gpsRouter.post('/admin/dispositivos-gps', requireAuth, async (req, res) => {
+  const user = (req as ReqWithUser).user;
+  if (user?.rol !== 'admin') { res.status(403).json({ error: 'No autorizado.' }); return; }
+
+  const parsed = dispositivoSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Datos inválidos.', detalle: parsed.error.flatten() }); return; }
+
+  const { imei, repartidorId, nombre } = parsed.data;
+
+  // Verificar que el repartidor existe
+  const rep = await pool.query(`select id from repartidores where id = $1`, [repartidorId]);
+  if (!rep.rowCount) { res.status(404).json({ error: 'Repartidor no encontrado.' }); return; }
+
+  await pool.query(
+    `insert into dispositivos_gps (imei, repartidor_id, nombre, activo)
+     values ($1, $2, $3, true)
+     on conflict (imei) do update set repartidor_id = $2, nombre = $3, activo = true`,
+    [imei, repartidorId, nombre]
+  );
+  res.json({ ok: true });
+});
+
+// DELETE /admin/dispositivos-gps/:imei — desactiva un tracker
+gpsRouter.delete('/admin/dispositivos-gps/:imei', requireAuth, async (req, res) => {
+  const user = (req as ReqWithUser).user;
+  if (user?.rol !== 'admin') { res.status(403).json({ error: 'No autorizado.' }); return; }
+
+  await pool.query(
+    `update dispositivos_gps set activo = false where imei = $1`,
+    [req.params.imei]
+  );
+  res.json({ ok: true });
 });

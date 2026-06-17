@@ -35,6 +35,16 @@ create index if not exists idx_gps_points_rep_ts
 create index if not exists idx_gps_points_jornada_ts
   on gps_points (jornada_id, timestamp_ms desc);
 
+-- Mapea IMEI de tracker físico (GT06, etc.) al repartidor correspondiente
+create table if not exists dispositivos_gps (
+  imei text primary key,
+  repartidor_id text not null references repartidores(id),
+  nombre text not null,
+  activo boolean not null default true,
+  ultimo_contacto_ms bigint,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists pedidos_calle (
   id text primary key,
   calle_normalizada text not null,
