@@ -87,6 +87,7 @@ function AdminTabs() {
         <Tabs.Screen name="clientes" options={{ title: 'Clientes', tabBarIcon: ({ color, focused }) => <MaterialIcons name="groups" size={focused ? 23 : 21} color={color} /> }} />
         <Tabs.Screen name="catalogo" options={{ title: 'Catálogo', tabBarIcon: ({ color, focused }) => <MaterialIcons name="table-chart" size={focused ? 23 : 21} color={color} /> }} />
         <Tabs.Screen name="repartidores" options={{ title: 'Equipo', tabBarIcon: ({ color, focused }) => <MaterialIcons name="delivery-dining" size={focused ? 23 : 21} color={color} /> }} />
+        <Tabs.Screen name="trackers" options={{ title: 'Trackers', tabBarIcon: ({ color, focused }) => <MaterialIcons name="gps-fixed" size={focused ? 23 : 21} color={color} /> }} />
         <Tabs.Screen name="estadisticas" options={{ href: null }} />
       </Tabs>
     </View>
