@@ -216,6 +216,7 @@ gpsRouter.get('/gps/live', requireAuth, async (_req, res) => {
      from gps_points gp
      join repartidores r on r.id = gp.repartidor_id
      where gp.timestamp_ms > extract(epoch from now() - interval '24 hours') * 1000
+       and gp.timestamp_ms <= extract(epoch from now() + interval '5 minutes') * 1000
      order by gp.repartidor_id, gp.timestamp_ms desc`
   );
 
