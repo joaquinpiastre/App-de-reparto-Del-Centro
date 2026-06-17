@@ -144,6 +144,13 @@ async function getRepartidorByImei(imei: string): Promise<{ repartidorId: string
   return { repartidorId: rows[0].repartidor_id, nombre: rows[0].nombre };
 }
 
+async function actualizarUltimoContacto(imei: string): Promise<void> {
+  await pool.query(
+    `update dispositivos_gps set ultimo_contacto_ms = $1 where imei = $2`,
+    [Date.now(), imei]
+  );
+}
+
 async function saveGpsPoint(repartidorId: string, location: LocationData): Promise<void> {
   const jornadaAbierta = await pool.query<{ id: string }>(
     `select id from jornadas where repartidor_id = $1 and estado = 'abierta' order by iniciada_en desc limit 1`,
@@ -169,12 +176,6 @@ async function saveGpsPoint(repartidorId: string, location: LocationData): Promi
      values ($1, $2, $3, $4, $5, $6, $7)`,
     [jornadaId, repartidorId, location.lat, location.lng, location.speedKmh, null, location.timestampMs]
   );
-
-  await pool.query(
-    `update dispositivos_gps set ultimo_contacto_ms = $1
-     where imei = (select imei from dispositivos_gps where repartidor_id = $2 and activo = true limit 1)`,
-    [Date.now(), repartidorId]
-  );
 }
 
 // ─── Packet handlers ──────────────────────────────────────────────────────────
@@ -198,6 +199,8 @@ async function handlePacket(
       const imeiBytes = packet.data.slice(packet.data.length - 8);
       const deviceImei = decodeImei(imeiBytes);
       console.log(`[GT06] Login IMEI=${deviceImei}`);
+      // Actualizar último contacto al conectar, aunque no haya fix GPS aún
+      void actualizarUltimoContacto(deviceImei);
       return deviceImei;
     }
 
@@ -207,6 +210,9 @@ async function handlePacket(
         console.warn('[GT06] Location packet antes de login — ignorando');
         return null;
       }
+      // Actualizar último contacto en cada paquete de ubicación (con o sin fix)
+      void actualizarUltimoContacto(imei);
+
       const location = decodeLocation(packet.data);
       if (!location) return null;
       if (!location.validFix) return null;
@@ -221,6 +227,7 @@ async function handlePacket(
     }
 
     case PROTO_HEARTBEAT:
+      if (imei) void actualizarUltimoContacto(imei);
       return null;
 
     default:
