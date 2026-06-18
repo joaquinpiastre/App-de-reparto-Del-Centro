@@ -2,6 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 
 import { COLORS } from '@/constants/colors';
+import { separarPuntosSuperpuestos } from '@/lib/mapaUtil';
 import type { RecorridoPoint, RecorridoStop, VisitStop } from '@/services/adminReportes';
 
 interface Props {
@@ -59,6 +60,8 @@ export function MapaRecorridoHistorial({ points, stops, visitStops = [] }: Props
   const region = tieneTrack
     ? calcularRegion(points)
     : calcularRegionDesdeVisitas(visitStops);
+  const stopsSeparados = separarPuntosSuperpuestos(stops);
+  const visitStopsSeparados = separarPuntosSuperpuestos(visitStops);
 
   return (
     <MapView
@@ -82,7 +85,7 @@ export function MapaRecorridoHistorial({ points, stops, visitStops = [] }: Props
             title="Fin del turno"
             pinColor="#ef4444"
           />
-          {stops.map((s, i) => (
+          {stopsSeparados.map((s, i) => (
             <Marker
               key={`stop-${i}-${s.inicio}`}
               coordinate={{ latitude: s.lat, longitude: s.lng }}
@@ -95,7 +98,7 @@ export function MapaRecorridoHistorial({ points, stops, visitStops = [] }: Props
       )}
 
       {/* Visitas marcadas por el repartidor */}
-      {visitStops.map((v, i) => (
+      {visitStopsSeparados.map((v, i) => (
         <Marker
           key={`visit-${i}-${v.inicio}`}
           coordinate={{ latitude: v.lat, longitude: v.lng }}

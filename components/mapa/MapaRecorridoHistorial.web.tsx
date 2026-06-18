@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { COLORS } from '@/constants/colors';
 import { REGION_SAN_RAFAEL } from '@/constants/mapRegion';
+import { separarPuntosSuperpuestos } from '@/lib/mapaUtil';
 import type { RecorridoPoint, RecorridoStop, VisitStop } from '@/services/adminReportes';
 
 interface Props {
@@ -13,9 +14,11 @@ interface Props {
 
 export function MapaRecorridoHistorial({ points, stops, visitStops = [] }: Props) {
   const srcDoc = useMemo(() => {
+    const visitStopsSeparados = separarPuntosSuperpuestos(visitStops);
+    const stopsSeparados = separarPuntosSuperpuestos(stops);
     const safePoints      = JSON.stringify(points).replace(/</g, '\\u003c');
-    const safeStops       = JSON.stringify(stops).replace(/</g, '\\u003c');
-    const safeVisitStops  = JSON.stringify(visitStops).replace(/</g, '\\u003c');
+    const safeStops       = JSON.stringify(stopsSeparados).replace(/</g, '\\u003c');
+    const safeVisitStops  = JSON.stringify(visitStopsSeparados).replace(/</g, '\\u003c');
     const lat0 = REGION_SAN_RAFAEL.latitude;
     const lng0 = REGION_SAN_RAFAEL.longitude;
 
