@@ -18,6 +18,19 @@ const BASE_COORDENADAS = { lat: -34.6177, lng: -68.3301 };
 // Cuando no hay red al confirmar una visita, se encola para reintentar después.
 const SYNC_KEY = 'visitas_pendientes_sync';
 const ROUTE_ORDER_KEY = 'jornada_client_order';
+// Respaldo local de clientesDelDia: permite restaurar la jornada tras un
+// reinicio/recarga de la pestaña aunque en ese momento no haya conexión
+// para volver a pedir las asignaciones al backend (típico manejando, con
+// señal intermitente).
+const CLIENTES_CACHE_KEY = 'jornada_clientes_cache';
+
+async function cachearClientesDelDia(clientes: Cliente[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(CLIENTES_CACHE_KEY, JSON.stringify(clientes));
+  } catch {
+    // No crítico
+  }
+}
 interface PendienteSync {
   asigId: string;
   estado: EstadoEntrega;
@@ -192,6 +205,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       ['viaje_index', String(index)],
       ['viaje_asig_id', cliente?.id ?? ''],
     ]);
+    void cachearClientesDelDia(get().clientesDelDia);
   },
 
   iniciarJornada: async () => {
@@ -238,6 +252,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       ['jornada_inicio_epoch', String(jornadaInicioEpoch)],
       [ROUTE_ORDER_KEY, JSON.stringify(clientes.map((c) => c.id))],
     ]);
+    void cachearClientesDelDia(clientes);
     if (usuario?.id) {
       await iniciarGPS(jornadaId, usuario.id, usuario.nombre).catch((err) => {
         const msg = err instanceof Error ? err.message : 'No se pudo iniciar el GPS.';
@@ -294,7 +309,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       entregaTimerSegundos: 0,
       viajeIniciadoEpoch: null,
     });
-    void AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index', 'viaje_asig_id', 'jornada_activa_id', 'jornada_inicio_epoch', ROUTE_ORDER_KEY]);
+    void AsyncStorage.multiRemove(['viaje_epoch', 'viaje_index', 'viaje_asig_id', 'jornada_activa_id', 'jornada_inicio_epoch', ROUTE_ORDER_KEY, CLIENTES_CACHE_KEY]);
     // Revertir a presencia: el admin sigue viendo al repartidor aunque terminó el turno
     await detenerGPS(true).catch((err) => console.warn('detenerGPS:', err));
 
@@ -333,7 +348,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       fotoPendienteUri: null,
       entregaTimerSegundos: 0,
     });
-    void AsyncStorage.multiRemove(['jornada_activa_id', 'jornada_inicio_epoch', 'viaje_epoch', 'viaje_index', 'viaje_asig_id', ROUTE_ORDER_KEY]).catch(() => {});
+    void AsyncStorage.multiRemove(['jornada_activa_id', 'jornada_inicio_epoch', 'viaje_epoch', 'viaje_index', 'viaje_asig_id', ROUTE_ORDER_KEY, CLIENTES_CACHE_KEY]).catch(() => {});
     // Parada completa del GPS en logout
     void detenerGPS(false).catch((err) => console.warn('detenerGPS logout:', err));
   },
@@ -372,7 +387,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       if (activas.length === 0 && Object.keys(queuedEstados).length === 0) {
         // Jornada ya finalizada → limpiar claves
-        await AsyncStorage.multiRemove(['jornada_activa_id', 'jornada_inicio_epoch', 'viaje_epoch', 'viaje_index', 'viaje_asig_id', ROUTE_ORDER_KEY]);
+        await AsyncStorage.multiRemove(['jornada_activa_id', 'jornada_inicio_epoch', 'viaje_epoch', 'viaje_index', 'viaje_asig_id', ROUTE_ORDER_KEY, CLIENTES_CACHE_KEY]);
         return;
       }
 
@@ -440,9 +455,54 @@ export const useAppStore = create<AppStore>((set, get) => ({
         clienteActualIndex,
         viajeIniciadoEpoch,
       });
+      void cachearClientesDelDia(clientes);
     } catch {
-      // Sin conexión — el rep verá el botón INICIAR TURNO normalmente.
-      // No limpiar las claves para reintentar en el próximo arranque.
+      // Sin conexión justo en el momento de restaurar (típico: recarga de la
+      // pestaña en medio de la ruta, con señal intermitente). En vez de
+      // rendirse y mostrar "Turno no iniciado", usamos el último snapshot
+      // local de clientesDelDia para no perder la jornada en curso.
+      try {
+        const cacheStr = await AsyncStorage.getItem(CLIENTES_CACHE_KEY);
+        if (!cacheStr) return;
+        const clientesCache = JSON.parse(cacheStr) as Cliente[];
+        if (!clientesCache.length) return;
+        const clientes = clientesCache.map((c) => {
+          const override = queuedEstados[c.id];
+          return override ? { ...c, estado: override } : c;
+        });
+
+        let clienteActualIndex: number;
+        if (viajeAsigId) {
+          const byAsigId = clientes.findIndex((c) => c.id === viajeAsigId);
+          clienteActualIndex =
+            byAsigId >= 0
+              ? byAsigId
+              : Math.max(clientes.findIndex((c) => c.estado === 'pendiente' || c.estado === 'en_camino'), 0);
+        } else {
+          const enCaminoIdx = clientes.findIndex((c) => c.estado === 'en_camino');
+          const primerPendienteIdx = clientes.findIndex((c) => c.estado === 'pendiente');
+          clienteActualIndex = enCaminoIdx >= 0 ? enCaminoIdx : Math.max(primerPendienteIdx, 0);
+        }
+
+        let viajeIniciadoEpoch: number | null = null;
+        const clienteActual = clientes[clienteActualIndex];
+        if (viajeAsigId || clienteActual?.estado === 'en_camino') {
+          viajeIniciadoEpoch = viajeEpochStr ? Number(viajeEpochStr) : null;
+        }
+
+        set({
+          jornadaActiva: true,
+          gpsActivo: true,
+          jornadaId: jornadaActivaId,
+          jornadaInicioEpoch: Number(jornadaEpochStr),
+          clientesDelDia: clientes,
+          clienteActualIndex,
+          viajeIniciadoEpoch,
+        });
+      } catch {
+        // Sin cache tampoco — el rep verá el botón INICIAR TURNO normalmente.
+        // No limpiar las claves para reintentar en el próximo arranque.
+      }
     }
   },
 
@@ -464,6 +524,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set((s) => ({
       clientesDelDia: s.clientesDelDia.map((c) => (c.id === id ? { ...c, ...patch } : c)),
     }));
+    void cachearClientesDelDia(get().clientesDelDia);
   },
 
   marcarClienteEstado: (id, estado) => {
