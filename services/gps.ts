@@ -145,6 +145,13 @@ async function arrancarLocationTask(notificationBody: string): Promise<void> {
  * Si el GPS ya estaba corriendo en modo presencia, solo actualiza el jornadaId.
  */
 export async function iniciarGPS(jornadaId: string, repartidorId: string, repartidorNombre?: string) {
+  if (Platform.OS === 'web') {
+    // En web la ubicación la maneja el tracker GT06E (hardware), no el navegador.
+    await AsyncStorage.setItem('jornada_id', jornadaId);
+    await AsyncStorage.setItem('repartidor_id', repartidorId);
+    if (repartidorNombre) await AsyncStorage.setItem('repartidor_nombre', repartidorNombre);
+    return;
+  }
   await AsyncStorage.setItem('jornada_id', jornadaId);
   await AsyncStorage.setItem('repartidor_id', repartidorId);
   if (repartidorNombre) {
@@ -218,6 +225,18 @@ export async function iniciarGPSPresencia(repartidorId: string, repartidorNombre
  * @param revertirAPresencia Si true, el GPS sigue corriendo pero con jornadaId de presencia.
  */
 export async function detenerGPS(revertirAPresencia = false) {
+  if (Platform.OS === 'web') {
+    if (revertirAPresencia) {
+      const repartidorId = await AsyncStorage.getItem('repartidor_id');
+      if (repartidorId) {
+        await AsyncStorage.setItem('jornada_id', presenciaJornadaId(repartidorId));
+      }
+      return;
+    }
+    await AsyncStorage.removeItem(GPS_ACTIVO_KEY);
+    await AsyncStorage.removeItem('jornada_id');
+    return;
+  }
   if (revertirAPresencia) {
     const repartidorId = await AsyncStorage.getItem('repartidor_id');
     if (repartidorId) {

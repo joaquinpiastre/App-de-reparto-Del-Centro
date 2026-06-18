@@ -68,8 +68,11 @@ export default function RootLayout() {
       if (!mounted) return;
       setUsuario(user);
 
-      if (user?.rol === 'repartidor' && Platform.OS !== 'web') {
-        // Recuperar jornada activa si el OS mató la app con la pantalla apagada.
+      if (user?.rol === 'repartidor') {
+        // Recuperar jornada activa si el OS mató la app con la pantalla apagada
+        // (o, en web/PWA, si el navegador descargó la pestaña en segundo plano y
+        // la recargó al volver — el estado en memoria se pierde pero el token y
+        // estas claves en AsyncStorage/localStorage sobreviven).
         // restaurarJornada limpia viaje_epoch/viaje_index si recupera exitosamente,
         // por lo que la restauración del viaje siguiente solo aplica si no hubo jornada que recuperar.
         await useAppStore.getState().restaurarJornada();
