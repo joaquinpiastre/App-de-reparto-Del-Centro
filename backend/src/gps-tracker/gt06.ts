@@ -119,13 +119,13 @@ function decodeLocation(data: Buffer): LocationData | null {
   const flags   = data.readUInt16BE(16);
 
   const isNorth  = (flags & 0x0400) !== 0; // bit 10
-  const isEast   = (flags & 0x0800) !== 0; // bit 11
+  const isWest   = (flags & 0x0800) !== 0; // bit 11: en este dispositivo, 1 = oeste (no este)
   const validFix = (flags & 0x1000) !== 0; // bit 12
 
   let lat = latRaw / 1_800_000;
   let lng = lngRaw / 1_800_000;
   if (!isNorth) lat = -lat;
-  if (!isEast)  lng = -lng;
+  if (isWest)   lng = -lng;
 
   const timestampMs = Date.UTC(year, month - 1, day, hour, min, sec);
 
