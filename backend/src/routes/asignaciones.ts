@@ -31,6 +31,10 @@ async function ensureTable(): Promise<void> {
     ALTER TABLE asignaciones
     DROP CONSTRAINT IF EXISTS asignaciones_repartidor_id_cliente_id_fecha_programada_key
   `);
+  // Posición capturada al marcar la visita (tracker GPS), para no depender
+  // de interpolar por tiempo entre puntos GPS sueltos del recorrido.
+  await pool.query(`ALTER TABLE asignaciones ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION`);
+  await pool.query(`ALTER TABLE asignaciones ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION`);
 }
 
 const bulkSchema = z.object({
@@ -192,13 +196,23 @@ asignacionesRouter.patch('/asignaciones/:id/estado', requireAuth, async (req, re
   }
   const p = parsed.data;
   await pool.query(
-    `UPDATE asignaciones
+    `UPDATE asignaciones a
         SET estado           = $1,
-            notas_repartidor = COALESCE($2, notas_repartidor),
-            hora_llegada_ms  = COALESCE(hora_llegada_ms, $3),
-            hora_salida_ms   = COALESCE(hora_salida_ms, $4),
-            jornada_id       = COALESCE($5, jornada_id)
-      WHERE id = $6`,
+            notas_repartidor = COALESCE($2, a.notas_repartidor),
+            hora_llegada_ms  = COALESCE(a.hora_llegada_ms, $3),
+            hora_salida_ms   = COALESCE(a.hora_salida_ms, $4),
+            jornada_id       = COALESCE($5, a.jornada_id),
+            lat              = COALESCE(a.lat, (
+              SELECT gp.lat FROM gps_points gp
+              WHERE gp.repartidor_id = a.repartidor_id
+              ORDER BY gp.timestamp_ms DESC LIMIT 1
+            )),
+            lng              = COALESCE(a.lng, (
+              SELECT gp.lng FROM gps_points gp
+              WHERE gp.repartidor_id = a.repartidor_id
+              ORDER BY gp.timestamp_ms DESC LIMIT 1
+            ))
+      WHERE a.id = $6`,
     [
       p.estado,
       p.notasRepartidor ?? null,

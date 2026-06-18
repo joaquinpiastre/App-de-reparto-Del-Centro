@@ -282,14 +282,14 @@ gpsRouter.get('/gps/jornadas/:jornadaId/recorrido', requireAuth, async (req, res
   };
   const visitRows = await pool.query<VisitRow>(
     `select a.hora_llegada_ms, a.hora_salida_ms, c.nombre, a.estado,
-       (select gp.lat from gps_points gp
+       coalesce(a.lat, (select gp.lat from gps_points gp
         where gp.jornada_id = $1
         order by abs(gp.timestamp_ms - a.hora_llegada_ms) asc
-        limit 1) as lat,
-       (select gp.lng from gps_points gp
+        limit 1)) as lat,
+       coalesce(a.lng, (select gp.lng from gps_points gp
         where gp.jornada_id = $1
         order by abs(gp.timestamp_ms - a.hora_llegada_ms) asc
-        limit 1) as lng
+        limit 1)) as lng
      from asignaciones a
      join clientes c on c.id = a.cliente_id
      where a.jornada_id = $1
