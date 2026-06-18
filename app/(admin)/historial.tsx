@@ -231,11 +231,17 @@ export default function Historial() {
                       visitStops={recorrido?.visitStops ?? []}
                     />
                     <Text style={styles.row}>
-                      Puntos GPS: {recorrido?.points.length ?? 0} · Paradas: {recorrido?.stops.length ?? 0}
+                      Puntos GPS: {recorrido?.points.length ?? 0} · Paradas GPS: {recorrido?.stops.length ?? 0} · Visitas a clientes: {recorrido?.visitStops?.length ?? 0}
                     </Text>
+                    {(recorrido?.visitStops ?? []).map((v, i) => (
+                      <Text key={`visita-${v.inicio}-${i}`} style={styles.row}>
+                        • {v.estado === 'entregado' ? '✓' : '⚠'} {v.nombre}: {new Date(v.inicio).toLocaleTimeString('es-AR')}
+                        {v.duracionSegundos > 0 ? ` (${Math.round(v.duracionSegundos / 60)} min)` : ''}
+                      </Text>
+                    ))}
                     {(recorrido?.stops ?? []).map((s, i) => (
                       <Text key={`${s.inicio}-${i}`} style={styles.row}>
-                        • Parada {i + 1}: {new Date(s.inicio).toLocaleTimeString('es-AR')} →{' '}
+                        • Parada GPS {i + 1}: {new Date(s.inicio).toLocaleTimeString('es-AR')} →{' '}
                         {new Date(s.fin).toLocaleTimeString('es-AR')} ({Math.round(s.duracionSegundos / 60)} min)
                       </Text>
                     ))}
