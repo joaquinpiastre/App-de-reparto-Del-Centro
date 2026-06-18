@@ -6,6 +6,7 @@ import { MapaRealtime } from '@/components/mapa/MapaRealtime';
 import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
 import { suscribirTelefonosGps } from '@/services/gpsFeed';
+import { formatHora } from '@/lib/fechaHora';
 import { useAppStore } from '@/store/useAppStore';
 import type { TelefonoUbicacion } from '@/types';
 
@@ -59,7 +60,7 @@ export default function MapaVivo() {
           {telefonos.map((t) => (
             <Text key={t.id} style={styles.item}>
               {t.nombre}: {t.posicion.lat.toFixed(5)}, {t.posicion.lng.toFixed(5)} ·{' '}
-              {new Date(t.actualizadoEn).toLocaleTimeString('es-AR')}
+              {formatHora(t.actualizadoEn)}
             </Text>
           ))}
         </View>

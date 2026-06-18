@@ -17,6 +17,7 @@ import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { Screen } from '@/components/ui/Screen';
 import { Button } from '@/components/ui/Button';
 import { COLORS } from '@/constants/colors';
+import { formatHora } from '@/lib/fechaHora';
 import {
   crearAsignacionesBulk,
   eliminarAsignacion,
@@ -609,7 +610,7 @@ export default function Asignaciones() {
                         </View>
                         {a.horaLlegadaMs ? (
                           <Text style={styles.asigHora}>
-                            {new Date(a.horaLlegadaMs).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                            {formatHora(a.horaLlegadaMs, { hour: '2-digit', minute: '2-digit' })}
                           </Text>
                         ) : null}
                       </View>

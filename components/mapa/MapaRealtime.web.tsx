@@ -65,7 +65,7 @@ export function MapaRealtime({ posicion, tituloMarcador = 'Dispositivo', telefon
       const bounds = [];
       points.forEach((p) => {
         const m = L.marker([p.lat, p.lng]).addTo(map);
-        const hora = new Date(p.actualizadoEn).toLocaleTimeString('es-AR');
+        const hora = new Date(p.actualizadoEn).toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
         m.bindPopup('<div class="popup"><strong>' + p.nombre + '</strong><br/>Actualizado: ' + hora + '</div>');
         bounds.push([p.lat, p.lng]);
       });

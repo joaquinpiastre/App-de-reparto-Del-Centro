@@ -20,12 +20,13 @@ import {
   type CatalogoProductos,
 } from '@/services/catalogoProductos';
 import { parseListaPreciosDesdeUri } from '@/services/listaPreciosExcel';
+import { formatFechaHora } from '@/lib/fechaHora';
 import type { ProductoLista } from '@/types';
 
 function fmtFecha(iso: string | null | undefined): string {
   if (!iso) return '';
   try {
-    return new Date(iso).toLocaleString('es-AR', {
+    return formatFechaHora(iso, {
       day: '2-digit',
       month: 'short',
       year: 'numeric',

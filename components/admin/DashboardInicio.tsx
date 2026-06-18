@@ -15,6 +15,7 @@ import {
   type TipoVehiculo,
 } from '@/services/adminReportes';
 import { actualizarRepartidorAdmin } from '@/services/adminRepartidores';
+import { formatFecha, formatHora } from '@/lib/fechaHora';
 
 const COLOR_MEDALLA = ['#F2C200', '#B8C0C8', '#D08A4E'];
 const COLOR_RANK_DEFAULT = '#E8ECEF';
@@ -26,9 +27,8 @@ function formatHoras(minutos: number): string {
 }
 
 function fmtFechaCorta(ms: number): string {
-  const d = new Date(ms);
-  const fecha = d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const hora = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  const fecha = formatFecha(ms, { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const hora = formatHora(ms, { hour: '2-digit', minute: '2-digit' });
   return `${fecha} ${hora}`;
 }
 

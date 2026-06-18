@@ -6,6 +6,7 @@ import { Screen } from '@/components/ui/Screen';
 import { Button } from '@/components/ui/Button';
 import { COLORS } from '@/constants/colors';
 import { actualizarEstadoPedidoCalle, obtenerTodosLosPedidosCalle } from '@/services/pedidosCalle';
+import { formatFechaHora } from '@/lib/fechaHora';
 import type { EstadoPedidoCalle, PedidoCalle } from '@/types';
 
 const ESTADOS: { label: string; value: EstadoPedidoCalle | 'todos' }[] = [
@@ -41,7 +42,7 @@ const ESTADO_COLOR: Record<string, string> = {
 
 function fmtFecha(ms: number) {
   try {
-    return new Date(Number(ms)).toLocaleString('es-AR', {
+    return formatFechaHora(Number(ms), {
       weekday: 'short',
       day: '2-digit',
       month: 'short',

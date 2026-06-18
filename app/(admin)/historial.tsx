@@ -16,6 +16,7 @@ import {
   type RecorridoJornadaResponse,
 } from '@/services/adminReportes';
 import { obtenerTodosLosPedidosCalle } from '@/services/pedidosCalle';
+import { formatHora, formatFechaHora } from '@/lib/fechaHora';
 import type { PedidoCalle, EstadoPedidoCalle } from '@/types';
 import type { CierreJornadaResumen } from '@/store/useHistorialStore';
 
@@ -38,7 +39,7 @@ const FILTROS: { label: string; value: EstadoPedidoCalle | 'todos' }[] = [
 
 function fmtHora(ms?: number | null) {
   if (!ms) return '—';
-  return new Date(Number(ms)).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  return formatHora(Number(ms), { hour: '2-digit', minute: '2-digit' });
 }
 
 function calcMinutos(llegada?: number | null, salida?: number | null): number | null {
@@ -184,7 +185,7 @@ export default function Historial() {
           <View key={c.id} style={styles.card}>
             {/* Cabecera */}
             <Text style={styles.title}>
-              {new Date(c.fechaIso).toLocaleString('es-AR', {
+              {formatFechaHora(c.fechaIso, {
                 weekday: 'short', day: '2-digit', month: 'short',
                 hour: '2-digit', minute: '2-digit',
               })}
@@ -235,14 +236,14 @@ export default function Historial() {
                     </Text>
                     {(recorrido?.visitStops ?? []).map((v, i) => (
                       <Text key={`visita-${v.inicio}-${i}`} style={styles.row}>
-                        • {v.estado === 'entregado' ? '✓' : '⚠'} {v.nombre}: {new Date(v.inicio).toLocaleTimeString('es-AR')}
+                        • {v.estado === 'entregado' ? '✓' : '⚠'} {v.nombre}: {formatHora(v.inicio)}
                         {v.duracionSegundos > 0 ? ` (${Math.round(v.duracionSegundos / 60)} min)` : ''}
                       </Text>
                     ))}
                     {(recorrido?.stops ?? []).map((s, i) => (
                       <Text key={`${s.inicio}-${i}`} style={styles.row}>
-                        • Parada GPS {i + 1}: {new Date(s.inicio).toLocaleTimeString('es-AR')} →{' '}
-                        {new Date(s.fin).toLocaleTimeString('es-AR')} ({Math.round(s.duracionSegundos / 60)} min)
+                        • Parada GPS {i + 1}: {formatHora(s.inicio)} →{' '}
+                        {formatHora(s.fin)} ({Math.round(s.duracionSegundos / 60)} min)
                       </Text>
                     ))}
                   </>
@@ -378,7 +379,7 @@ export default function Historial() {
                           </View>
                           <Text style={styles.pedidoFecha}>
                             {p.creadoEn
-                              ? new Date(Number(p.creadoEn)).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+                              ? formatFechaHora(Number(p.creadoEn), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
                               : '—'}
                           </Text>
                           {(p.items ?? []).map((it, idx) => (
@@ -471,7 +472,7 @@ export default function Historial() {
               </View>
               {/* Fecha + calle */}
               <Text style={styles.pedidoFecha}>
-                {new Date(Number(p.creadoEn)).toLocaleString('es-AR', {
+                {formatFechaHora(Number(p.creadoEn), {
                   weekday: 'short', day: '2-digit', month: 'short',
                   hour: '2-digit', minute: '2-digit',
                 })}

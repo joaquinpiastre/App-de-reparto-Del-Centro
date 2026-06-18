@@ -6,12 +6,13 @@ import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
 import { actualizarEstadoPedidoCalle, actualizarNotaPedidoCalle, suscribirPedidosCalle } from '@/services/pedidosCalle';
+import { formatFechaHora } from '@/lib/fechaHora';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
 import type { EstadoPedidoCalle, PedidoCalle } from '@/types';
 
 function fmtFecha(ts: number) {
   try {
-    return new Date(Number(ts)).toLocaleString('es-AR', {
+    return formatFechaHora(Number(ts), {
       day: '2-digit',
       month: 'short',
       hour: '2-digit',
@@ -117,7 +118,7 @@ function generarHTMLPedido(p: PedidoCalle): string {
   ${mismaCalleHtml}
 
   <footer>
-    Impreso desde Del Centro App · ${new Date().toLocaleString('es-AR')}
+    Impreso desde Del Centro App · ${formatFechaHora(Date.now())}
   </footer>
 </body>
 </html>`;

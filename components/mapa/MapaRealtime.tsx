@@ -3,6 +3,7 @@ import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 
 import { REGION_SAN_RAFAEL } from '@/constants/mapRegion';
 import { COLORS } from '@/constants/colors';
+import { formatHora } from '@/lib/fechaHora';
 import type { Coordenadas, TelefonoUbicacion } from '@/types';
 
 interface Props {
@@ -20,7 +21,7 @@ export function MapaRealtime({ posicion, tituloMarcador = 'Repartidor', telefono
           key={t.id}
           coordinate={{ latitude: t.posicion.lat, longitude: t.posicion.lng }}
           title={t.nombre}
-          description={`Actualizado ${new Date(t.actualizadoEn).toLocaleTimeString('es-AR')}`}
+          description={`Actualizado ${formatHora(t.actualizadoEn)}`}
           pinColor={COLORS.verdePrincipal}
         />
       ))}
