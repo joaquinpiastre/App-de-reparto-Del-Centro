@@ -6,13 +6,14 @@ import { Alert, Platform } from 'react-native';
 
 import { API_ENABLED, MOBILE_API_KEY } from '@/constants/api';
 import { API_URL } from '@/constants/api';
+import { fechaHoyArgentina } from '@/lib/fechaHora';
 
 const LOCATION_TASK = 'background-location-task';
 const GPS_ACTIVO_KEY = 'gps_activo';
 const BATERIA_SOLICITADA_KEY = 'bateria_exencion_solicitada';
 
 function presenciaJornadaId(repartidorId: string): string {
-  const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const fecha = fechaHoyArgentina().replace(/-/g, '');
   return `pres-${repartidorId}-${fecha}`;
 }
 

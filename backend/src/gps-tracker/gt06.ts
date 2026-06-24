@@ -10,6 +10,7 @@
 
 import net from 'net';
 import { pool } from '../db/client.js';
+import { fechaHoyArgentina } from '../cron/rutasFijasScheduler.js';
 
 // ─── CRC-16/IBM-SDLC (CRC-B) — algoritmo reflejado usado por GT06 ────────────
 function crc16(buf: Buffer): number {
@@ -161,7 +162,7 @@ async function saveGpsPoint(repartidorId: string, location: LocationData): Promi
   if (jornadaAbierta.rowCount && jornadaAbierta.rowCount > 0) {
     jornadaId = jornadaAbierta.rows[0].id;
   } else {
-    const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const fecha = fechaHoyArgentina().replace(/-/g, '');
     jornadaId = `pres-${repartidorId}-${fecha}`;
     await pool.query(
       `insert into jornadas (id, repartidor_id, iniciada_en, estado)

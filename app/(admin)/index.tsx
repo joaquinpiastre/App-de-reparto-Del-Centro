@@ -12,8 +12,9 @@ import { useAppStore } from '@/store/useAppStore';
 import { usePedidosCalleStore } from '@/store/usePedidosCalleStore';
 import { setAuthToken } from '@/services/apiClient';
 import { obtenerAsignaciones } from '@/services/asignaciones';
+import { fechaHoyArgentina } from '@/lib/fechaHora';
 
-const hoy = () => new Date().toISOString().slice(0, 10);
+const hoy = () => fechaHoyArgentina();
 
 export default function AdminDashboard() {
   const { resetSesion } = useAppStore();

@@ -16,3 +16,13 @@ export function formatFecha(ms: number | string, opts?: Intl.DateTimeFormatOptio
 export function formatFechaHora(ms: number | string, opts?: Intl.DateTimeFormatOptions): string {
   return new Date(ms).toLocaleString('es-AR', { timeZone: TIME_ZONE, ...opts });
 }
+
+/**
+ * Fecha de "hoy" en Argentina como "YYYY-MM-DD". NUNCA usar
+ * new Date().toISOString().slice(0,10): eso da la fecha UTC, que después
+ * de las 21:00 hora local ya es "mañana" — provoca que filtros por "hoy"
+ * (asignaciones, jornadas de presencia) no encuentren nada durante la noche.
+ */
+export function fechaHoyArgentina(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: TIME_ZONE });
+}

@@ -2,12 +2,19 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../auth.js';
 import { pool } from '../db/client.js';
+import { fechaHoyArgentina } from '../cron/rutasFijasScheduler.js';
 
 type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' } };
 
 export const asignacionesRouter = Router();
 
-const hoy = () => new Date().toISOString().slice(0, 10);
+// IMPORTANTE: usar la fecha de Argentina, no new Date().toISOString() (UTC).
+// Después de las 21:00 hora local, el día UTC ya cambió al siguiente, así que
+// usar UTC acá hacía que /asignaciones devolviera 0 resultados para "hoy" en
+// horario nocturno — el repartidor parecía tener la jornada recién terminada
+// (sin pendientes) aunque siguiera entregando, y restaurarJornada() cerraba
+// el turno solo al primer reintento de sincronización.
+const hoy = () => fechaHoyArgentina();
 
 async function ensureTable(): Promise<void> {
   await pool.query(`

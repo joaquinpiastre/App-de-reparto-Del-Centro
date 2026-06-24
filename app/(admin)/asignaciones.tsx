@@ -17,7 +17,7 @@ import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { Screen } from '@/components/ui/Screen';
 import { Button } from '@/components/ui/Button';
 import { COLORS } from '@/constants/colors';
-import { formatHora } from '@/lib/fechaHora';
+import { fechaHoyArgentina, formatHora } from '@/lib/fechaHora';
 import {
   crearAsignacionesBulk,
   eliminarAsignacion,
@@ -35,7 +35,7 @@ import {
 } from '@/services/rutasFijas';
 import type { Asignacion, ClienteCatalogo, Usuario } from '@/types';
 
-const hoy = () => new Date().toISOString().slice(0, 10);
+const hoy = () => fechaHoyArgentina();
 const formatFecha = (iso: string) => {
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;

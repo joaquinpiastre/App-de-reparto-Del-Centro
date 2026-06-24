@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, requireMobileKeyOrAuth } from '../auth.js';
 import { pool } from '../db/client.js';
+import { fechaHoyArgentina } from '../cron/rutasFijasScheduler.js';
 type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' | 'logistica' } };
 
 const dispositivoSchema = z.object({
@@ -169,7 +170,7 @@ gpsRouter.get('/gps/traccar', async (req, res) => {
   if (jornadaAbierta.rowCount && jornadaAbierta.rowCount > 0) {
     jornadaId = jornadaAbierta.rows[0].id;
   } else {
-    const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const fecha = fechaHoyArgentina().replace(/-/g, '');
     jornadaId = `pres-${id}-${fecha}`;
     await pool.query(
       `insert into jornadas (id, repartidor_id, iniciada_en, estado)

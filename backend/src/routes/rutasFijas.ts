@@ -93,7 +93,7 @@ rutasFijasRouter.post('/rutas-fijas/:repartidorId/generar', requireAuth, async (
     return;
   }
 
-  const fecha = (req.query.fecha as string | undefined) ?? new Date().toISOString().slice(0, 10);
+  const fecha = (req.query.fecha as string | undefined) ?? fechaHoyArgentina();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
     res.status(400).json({ error: 'Fecha inválida. Formato: YYYY-MM-DD.' });
     return;
