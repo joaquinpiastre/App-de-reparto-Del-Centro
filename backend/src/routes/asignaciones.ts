@@ -202,6 +202,10 @@ asignacionesRouter.patch('/asignaciones/:id/estado', requireAuth, async (req, re
     return;
   }
   const p = parsed.data;
+  // La posición sólo se captura cuando la visita queda resuelta (entregado/problema).
+  // Si se capturara también al marcar "en_camino", quedaría grabada la posición de
+  // cuando el repartidor SALIÓ hacia el cliente (no la del lugar real de la entrega),
+  // y como se usa COALESCE para no pisarla, esa posición vieja quedaba fija para siempre.
   await pool.query(
     `UPDATE asignaciones a
         SET estado           = $1,
@@ -209,16 +213,16 @@ asignacionesRouter.patch('/asignaciones/:id/estado', requireAuth, async (req, re
             hora_llegada_ms  = COALESCE(a.hora_llegada_ms, $3),
             hora_salida_ms   = COALESCE(a.hora_salida_ms, $4),
             jornada_id       = COALESCE($5, a.jornada_id),
-            lat              = COALESCE(a.lat, (
+            lat              = CASE WHEN $1 IN ('entregado', 'problema') THEN COALESCE(a.lat, (
               SELECT gp.lat FROM gps_points gp
               WHERE gp.repartidor_id = a.repartidor_id
               ORDER BY gp.timestamp_ms DESC LIMIT 1
-            )),
-            lng              = COALESCE(a.lng, (
+            )) ELSE a.lat END,
+            lng              = CASE WHEN $1 IN ('entregado', 'problema') THEN COALESCE(a.lng, (
               SELECT gp.lng FROM gps_points gp
               WHERE gp.repartidor_id = a.repartidor_id
               ORDER BY gp.timestamp_ms DESC LIMIT 1
-            ))
+            )) ELSE a.lng END
       WHERE a.id = $6`,
     [
       p.estado,
