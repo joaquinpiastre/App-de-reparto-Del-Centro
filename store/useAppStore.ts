@@ -386,7 +386,38 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const activas = todasOrdenadas.filter((a) => a.estado === 'pendiente' || a.estado === 'en_camino');
 
       if (activas.length === 0 && Object.keys(queuedEstados).length === 0) {
-        // Jornada ya finalizada → limpiar claves
+        // Jornada ya finalizada (sin pendientes) pero nunca se llamó a cerrarJornada()
+        // explícitamente (TERMINAR TURNO) — sin esto, el cierre se perdía para siempre
+        // y el día no aparecía en el historial del admin. Registramos el cierre con los
+        // datos que tengamos disponibles antes de limpiar, como red de seguridad.
+        try {
+          const cacheStr = await AsyncStorage.getItem(CLIENTES_CACHE_KEY);
+          const clientesCache = cacheStr ? (JSON.parse(cacheStr) as Cliente[]) : [];
+          if (clientesCache.length > 0) {
+            const completados = clientesCache.filter((c) => c.estado === 'entregado').length;
+            const minutos = Math.max(1, Math.round((Date.now() - Number(jornadaEpochStr)) / 60000));
+            const fechaIso = new Date().toISOString();
+            useHistorialStore.getState().registrarCierre({
+              fechaIso,
+              repartidorNombre: usuario.nombre,
+              completados,
+              total: clientesCache.length,
+              minutosEnRuta: minutos,
+            });
+            await registrarCierreJornadaApi({
+              jornadaId: jornadaActivaId,
+              repartidorId: usuario.id,
+              repartidorNombre: usuario.nombre,
+              completados,
+              total: clientesCache.length,
+              minutosEnRuta: minutos,
+              fechaIso,
+            }).catch(() => {});
+            await cerrarTurnoPedidosCalle(jornadaActivaId, usuario.id).catch(() => {});
+          }
+        } catch {
+          // No bloquear la limpieza si esto falla
+        }
         await AsyncStorage.multiRemove(['jornada_activa_id', 'jornada_inicio_epoch', 'viaje_epoch', 'viaje_index', 'viaje_asig_id', ROUTE_ORDER_KEY, CLIENTES_CACHE_KEY]);
         return;
       }
