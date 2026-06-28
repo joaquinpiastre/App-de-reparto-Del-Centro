@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,11 +14,12 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
+import * as Print from 'expo-print';
 
 import { Screen } from '@/components/ui/Screen';
 import { Button } from '@/components/ui/Button';
 import { COLORS } from '@/constants/colors';
-import { fechaHoyArgentina, formatHora } from '@/lib/fechaHora';
+import { fechaHoyArgentina, formatFechaHora, formatHora } from '@/lib/fechaHora';
 import {
   crearAsignacionesBulk,
   eliminarAsignacion,
@@ -40,6 +42,84 @@ const formatFecha = (iso: string) => {
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
 };
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function generarHTMLHojaDelDia(
+  fechaIso: string,
+  porRepartidor: Array<{ repartidorNombre: string; asignaciones: Asignacion[] }>
+): string {
+  const secciones = porRepartidor
+    .map(({ repartidorNombre, asignaciones: lista }) => {
+      const filas = lista
+        .map(
+          (a, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${escapeHtml(a.cliente.nombre)}</td>
+          <td>${a.cliente.tipo === 'taller' ? 'Taller' : 'Cliente'}</td>
+          <td>${escapeHtml(a.cliente.direccion)}</td>
+          <td>${escapeHtml(a.cliente.telefono ?? '')}</td>
+          <td>${escapeHtml(a.notasAdmin ?? a.cliente.pedido ?? '')}</td>
+        </tr>`
+        )
+        .join('');
+      return `
+      <h2>${escapeHtml(repartidorNombre)} <span class="cant">(${lista.length})</span></h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>Cliente / Taller</th><th>Tipo</th><th>Dirección</th><th>Teléfono</th><th>Pedido / nota</th></tr>
+        </thead>
+        <tbody>${filas}</tbody>
+      </table>`;
+    })
+    .join('<div class="sep"></div>');
+
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  body { font-family: Arial, sans-serif; padding: 24px; color: #2a2a2a; }
+  h1 { font-size: 18px; margin-bottom: 2px; }
+  h2 { font-size: 14px; margin: 18px 0 6px; color: #1b5e20; }
+  .cant { color: #888; font-weight: normal; }
+  .sub { color: #666; font-size: 12px; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th, td { border: 1px solid #ddd; padding: 5px 7px; text-align: left; }
+  th { background: #f0f0f0; }
+  .sep { border-top: 1px dashed #ccc; margin: 14px 0; }
+  footer { margin-top: 16px; font-size: 10px; color: #999; }
+</style>
+</head>
+<body>
+  <h1>Hoja de reparto del día — ${formatFecha(fechaIso)}</h1>
+  <div class="sub">Impreso ${formatFechaHora(Date.now())}</div>
+  ${secciones || '<p>Sin asignaciones para este día.</p>'}
+  <footer>Del Centro Pinturerías</footer>
+</body>
+</html>`;
+}
+
+async function imprimirHojaDelDia(html: string) {
+  try {
+    if (Platform.OS === 'web') {
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        setTimeout(() => win.print(), 400);
+      }
+    } else {
+      await Print.printAsync({ html });
+    }
+  } catch {
+    Alert.alert('Error', 'No se pudo generar la hoja del día.');
+  }
+}
 
 // ─── DragHandle ────────────────────────────────────────────────────────────────
 interface DragHandleProps {
@@ -93,6 +173,7 @@ export default function Asignaciones() {
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [guardando, setGuardando] = useState(false);
   const [aplicandoTodas, setAplicandoTodas] = useState(false);
+  const [imprimiendoHoja, setImprimiendoHoja] = useState(false);
 
   // Ruta fija
   const [rutaFija, setRutaFija] = useState<ClienteRutaFija[]>([]);
@@ -290,6 +371,35 @@ export default function Asignaciones() {
         },
       ]
     );
+  };
+
+  /** Genera e imprime la hoja del día: todos los clientes/talleres a visitar, agrupados por repartidor. */
+  const imprimirHojaDia = async () => {
+    setImprimiendoHoja(true);
+    try {
+      const todas = await obtenerAsignaciones({ fecha });
+      const ordenadas = [...todas].sort((a, b) => a.orden - b.orden);
+      const porRepartidorId = new Map<string, Asignacion[]>();
+      for (const a of ordenadas) {
+        const lista = porRepartidorId.get(a.repartidorId) ?? [];
+        lista.push(a);
+        porRepartidorId.set(a.repartidorId, lista);
+      }
+      if (porRepartidorId.size === 0) {
+        Alert.alert('Sin asignaciones', `No hay clientes asignados para el ${formatFecha(fecha)}.`);
+        return;
+      }
+      const porRepartidor = Array.from(porRepartidorId.entries()).map(([repartidorId, lista]) => ({
+        repartidorNombre: repartidores.find((r) => r.id === repartidorId)?.nombre ?? repartidorId,
+        asignaciones: lista,
+      }));
+      const html = generarHTMLHojaDelDia(fecha, porRepartidor);
+      await imprimirHojaDelDia(html);
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo generar la hoja del día.');
+    } finally {
+      setImprimiendoHoja(false);
+    }
   };
 
   const cargarRepartidores = useCallback(async () => {
@@ -492,6 +602,14 @@ export default function Asignaciones() {
           onPress={() => void aplicarTodasHoy()}
         />
       </View>
+
+      <Button
+        label={imprimiendoHoja ? 'GENERANDO…' : `IMPRIMIR HOJA DEL DÍA (${formatFecha(fecha)})`}
+        variant="secondary"
+        loading={imprimiendoHoja}
+        onPress={() => void imprimirHojaDia()}
+        iconLeft={<MaterialIcons name="print" size={16} color={COLORS.verdeOscuro} />}
+      />
 
       {/* Lista de asignaciones con drag-and-drop */}
       <View style={styles.section}>

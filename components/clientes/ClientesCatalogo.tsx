@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as Print from 'expo-print';
 
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
+import { formatFechaHora } from '@/lib/fechaHora';
 import {
   actualizarClienteAdmin,
   crearClienteAdmin,
@@ -12,6 +14,71 @@ import {
   type ClienteAdminCatalogo,
   type TipoCatalogoCliente,
 } from '@/services/adminClientes';
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function generarHTMLListadoClientes(clientes: ClienteAdminCatalogo[], titulo: string): string {
+  const filas = clientes
+    .map(
+      (c) => `
+      <tr>
+        <td>${escapeHtml(c.nombre)}</td>
+        <td>${c.tipo === 'taller' ? 'Taller' : 'Cliente'}</td>
+        <td>${escapeHtml(c.direccion)}</td>
+        <td>${escapeHtml(c.telefono)}</td>
+        <td>${escapeHtml(c.pedido)}</td>
+      </tr>`
+    )
+    .join('');
+
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  body { font-family: Arial, sans-serif; padding: 24px; color: #2a2a2a; }
+  h1 { font-size: 18px; margin-bottom: 2px; }
+  .sub { color: #666; font-size: 12px; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+  th { background: #f0f0f0; }
+  footer { margin-top: 16px; font-size: 10px; color: #999; }
+</style>
+</head>
+<body>
+  <h1>${escapeHtml(titulo)}</h1>
+  <div class="sub">${clientes.length} registro(s) · Impreso ${formatFechaHora(Date.now())}</div>
+  <table>
+    <thead>
+      <tr><th>Nombre</th><th>Tipo</th><th>Dirección</th><th>Teléfono</th><th>Pedido / rubro</th></tr>
+    </thead>
+    <tbody>${filas}</tbody>
+  </table>
+  <footer>Del Centro Pinturerías</footer>
+</body>
+</html>`;
+}
+
+async function imprimirListadoClientes(clientes: ClienteAdminCatalogo[], titulo: string) {
+  try {
+    const html = generarHTMLListadoClientes(clientes, titulo);
+    if (Platform.OS === 'web') {
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        setTimeout(() => win.print(), 400);
+      }
+    } else {
+      await Print.printAsync({ html });
+    }
+  } catch {
+    Alert.alert('Error', 'No se pudo generar el listado para imprimir.');
+  }
+}
 
 type Props = {
   title: string;
@@ -186,6 +253,16 @@ export function ClientesCatalogo({ title, subtitle, puedeEliminar, showBack }: P
         placeholderTextColor={COLORS.grisSecundario}
         value={q}
         onChangeText={setQ}
+      />
+      <Button
+        label="IMPRIMIR LISTADO (PDF)"
+        variant="secondary"
+        onPress={() =>
+          void imprimirListadoClientes(
+            data,
+            filtroLista === 'cliente' ? 'Listado de clientes' : filtroLista === 'taller' ? 'Listado de talleres' : 'Listado de clientes y talleres'
+          )
+        }
       />
       {showForm ? (
         <View style={styles.card}>
