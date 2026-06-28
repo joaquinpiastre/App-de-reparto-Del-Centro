@@ -214,6 +214,17 @@ export default function HomeRepartidor() {
 
         <Pressable
           style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
+          onPress={() => router.push('/(repartidor)/catalogo')}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: '#e8f4fd' }]}>
+            <MaterialIcons name="menu-book" size={26} color={COLORS.acentoAzul} />
+          </View>
+          <Text style={styles.actionLabel}>Catálogo</Text>
+          <Text style={styles.actionSub}>Precios y cotizaciones</Text>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
           onPress={() => Linking.openURL(`tel:${TEL_EMERGENCIA}`)}
         >
           <View style={[styles.actionIcon, { backgroundColor: '#fff0f0' }]}>
