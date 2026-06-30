@@ -4,7 +4,7 @@ import { Alert, Platform } from 'react-native';
 
 import { optimizarRuta } from '@/hooks/useRuta';
 import { actualizarEstadoAsignacion, obtenerAsignaciones } from '@/services/asignaciones';
-import { registrarCierreJornadaApi } from '@/services/entregasApi';
+import { abrirJornadaGpsApi, registrarCierreJornadaApi } from '@/services/entregasApi';
 import { detenerGPS, iniciarGPS, iniciarGPSPresencia } from '@/services/gps';
 import { cerrarTurnoPedidosCalle } from '@/services/pedidosCalle';
 import { API_ENABLED } from '@/constants/api';
@@ -254,6 +254,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
     ]);
     void cachearClientesDelDia(clientes);
     if (usuario?.id) {
+      // Independiente de iniciarGPS (que en web no usa el GPS del teléfono):
+      // avisa al backend que esta jornada está abierta para que el tracker
+      // GT06E vincule sus puntos a ella desde el primer momento.
+      void abrirJornadaGpsApi({
+        jornadaId,
+        repartidorId: usuario.id,
+        repartidorNombre: usuario.nombre,
+      }).catch((err) => console.warn('abrirJornadaGpsApi:', err));
       await iniciarGPS(jornadaId, usuario.id, usuario.nombre).catch((err) => {
         const msg = err instanceof Error ? err.message : 'No se pudo iniciar el GPS.';
         Alert.alert(

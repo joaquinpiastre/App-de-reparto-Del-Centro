@@ -38,3 +38,21 @@ export async function registrarCierreJornadaApi(payload: CierreJornadaPayload): 
     body: JSON.stringify(payload),
   });
 }
+
+/**
+ * Avisa al backend que arrancó una jornada real, para que el tracker GT06E
+ * pueda vincular sus puntos GPS a esta jornada desde el primer momento
+ * (en vez de caer en una jornada de "presencia" temporal que no aparece
+ * en el historial al cerrar el turno).
+ */
+export async function abrirJornadaGpsApi(payload: {
+  jornadaId: string;
+  repartidorId: string;
+  repartidorNombre?: string;
+}): Promise<void> {
+  if (!API_ENABLED) return;
+  await apiRequest('/gps/jornada/abrir', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}

@@ -5,6 +5,12 @@ import { pool } from '../db/client.js';
 import { fechaHoyArgentina } from '../cron/rutasFijasScheduler.js';
 type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' | 'logistica' } };
 
+const abrirJornadaSchema = z.object({
+  jornadaId: z.string().min(3),
+  repartidorId: z.string().min(3),
+  repartidorNombre: z.string().min(2).optional(),
+});
+
 const dispositivoSchema = z.object({
   imei: z.string().regex(/^\d{15}$/, 'IMEI debe ser 15 dígitos numéricos'),
   repartidorId: z.string().min(3),
@@ -84,6 +90,36 @@ function detectStops(
   }
   return stops;
 }
+
+// POST /gps/jornada/abrir — crea la jornada en estado 'abierta' apenas el
+// repartidor inicia turno, SIN depender de que el GPS del teléfono mande
+// algún punto (en web no se usa el GPS del teléfono, lo cubre el tracker
+// GT06E). Si esto no se llama, los puntos del tracker durante el día caen
+// en una jornada de "presencia" temporal en vez de la jornada real, y el
+// recorrido aparece vacío en el historial del admin al cerrar el turno.
+gpsRouter.post('/gps/jornada/abrir', requireAuth, async (req, res) => {
+  const parsed = abrirJornadaSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Payload inválido.' });
+    return;
+  }
+  const { jornadaId, repartidorId, repartidorNombre } = parsed.data;
+  const nombre = repartidorNombre?.trim() || repartidorId.replace(/^usr-/, 'Repartidor ');
+
+  await pool.query(
+    `insert into repartidores (id, nombre, rol, activo)
+     values ($1, $2, 'repartidor', true)
+     on conflict (id) do update set activo = true`,
+    [repartidorId, nombre]
+  );
+  await pool.query(
+    `insert into jornadas (id, repartidor_id, iniciada_en, estado)
+     values ($1, $2, now(), 'abierta')
+     on conflict (id) do nothing`,
+    [jornadaId, repartidorId]
+  );
+  res.json({ ok: true });
+});
 
 gpsRouter.post('/gps/update', requireMobileKeyOrAuth, async (req, res) => {
   const parsed = gpsUpdateSchema.safeParse(req.body);
