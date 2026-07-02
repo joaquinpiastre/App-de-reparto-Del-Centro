@@ -313,12 +313,13 @@ gpsRouter.get('/gps/jornadas/:jornadaId/recorrido', requireAuth, async (req, res
     hora_llegada_ms: number;
     hora_salida_ms: number;
     nombre: string;
+    direccion: string;
     estado: string;
     lat: number | null;
     lng: number | null;
   };
   const visitRows = await pool.query<VisitRow>(
-    `select a.hora_llegada_ms, a.hora_salida_ms, c.nombre, a.estado,
+    `select a.hora_llegada_ms, a.hora_salida_ms, c.nombre, c.direccion, a.estado,
        coalesce(a.lat, (select gp.lat from gps_points gp
         where gp.jornada_id = $1
         order by abs(gp.timestamp_ms - a.hora_llegada_ms) asc
@@ -347,6 +348,7 @@ gpsRouter.get('/gps/jornadas/:jornadaId/recorrido', requireAuth, async (req, res
         ? Math.max(0, Math.round((Number(r.hora_salida_ms) - Number(r.hora_llegada_ms)) / 1000))
         : 0,
       nombre: r.nombre,
+      direccion: r.direccion,
       estado: r.estado as 'entregado' | 'problema',
     }));
 

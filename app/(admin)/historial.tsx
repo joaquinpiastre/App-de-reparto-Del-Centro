@@ -235,10 +235,18 @@ export default function Historial() {
                       Puntos GPS: {recorrido?.points.length ?? 0} · Paradas GPS: {recorrido?.stops.length ?? 0} · Visitas a clientes: {recorrido?.visitStops?.length ?? 0}
                     </Text>
                     {(recorrido?.visitStops ?? []).map((v, i) => (
-                      <Text key={`visita-${v.inicio}-${i}`} style={styles.row}>
-                        • {v.estado === 'entregado' ? '✓' : '⚠'} {v.nombre}: {formatHora(v.inicio)}
-                        {v.duracionSegundos > 0 ? ` (${Math.round(v.duracionSegundos / 60)} min)` : ''}
-                      </Text>
+                      <View key={`visita-${v.inicio}-${i}`} style={styles.visitRow}>
+                        <Text style={styles.visitNombre}>
+                          {v.estado === 'entregado' ? '✓' : '⚠'} {v.nombre}
+                        </Text>
+                        {v.direccion ? (
+                          <Text style={styles.visitDir}>{v.direccion}</Text>
+                        ) : null}
+                        <Text style={styles.visitHora}>
+                          {formatHora(v.inicio)}
+                          {v.duracionSegundos > 0 ? ` · ${Math.round(v.duracionSegundos / 60)} min` : ''}
+                        </Text>
+                      </View>
                     ))}
                     {(recorrido?.stops ?? []).map((s, i) => (
                       <Text key={`${s.inicio}-${i}`} style={styles.row}>
@@ -569,6 +577,11 @@ const styles = StyleSheet.create({
   lugarTiempo: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   lugarTiempoTxt: { fontFamily: 'Poppins_400Regular', fontSize: 12, color: COLORS.grisSecundario, flex: 1 },
   lugarNota: { fontFamily: 'Poppins_400Regular', fontSize: 12, color: '#b45309', fontStyle: 'italic' },
+
+  visitRow: { paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  visitNombre: { fontFamily: 'Poppins_600SemiBold', fontSize: 13, color: COLORS.grisTexto },
+  visitDir: { fontFamily: 'Poppins_400Regular', fontSize: 12, color: COLORS.grisSecundario },
+  visitHora: { fontFamily: 'Poppins_400Regular', fontSize: 12, color: COLORS.acentoAzul },
 
   estadoBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, alignSelf: 'flex-start' },
   estadoBadgeTxt: { fontFamily: 'Poppins_600SemiBold', fontSize: 11 },

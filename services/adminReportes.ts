@@ -49,6 +49,7 @@ export interface VisitStop {
   fin: number;
   duracionSegundos: number;
   nombre: string;
+  direccion: string;
   estado: 'entregado' | 'problema';
 }
 
