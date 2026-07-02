@@ -52,6 +52,62 @@ pagosRouter.post('/pagos', requireAuth, async (req, res) => {
   res.json({ pago: rows[0] });
 });
 
+// GET /admin/pagos/stats — estadísticas de cobros para el mes actual
+pagosRouter.get('/admin/pagos/stats', requireAuth, async (req, res) => {
+  const user = (req as typeof req & ReqWithUser).user;
+  if (user?.rol !== 'admin') {
+    res.status(403).json({ error: 'Solo el administrador puede ver estadísticas.' });
+    return;
+  }
+
+  // Asegurar que la tabla existe antes de consultar
+  await pool.query(`
+    create table if not exists pagos (
+      id uuid primary key default gen_random_uuid(),
+      cliente_id text not null,
+      cliente_nombre text not null,
+      repartidor_id text not null,
+      repartidor_nombre text not null,
+      monto numeric(12,2) not null,
+      metodo text not null,
+      numero_cheque text,
+      banco text,
+      observaciones text,
+      creado_en_ms bigint not null,
+      created_at timestamptz not null default now()
+    )
+  `);
+
+  const [clientesRes, repartidoresRes, totalRes] = await Promise.all([
+    pool.query(
+      `select cliente_nombre as nombre, sum(monto)::float as total
+         from pagos
+        group by cliente_nombre
+        order by total desc
+        limit 8`
+    ),
+    pool.query(
+      `select repartidor_nombre as nombre, sum(monto)::float as total
+         from pagos
+        group by repartidor_nombre
+        order by total desc`
+    ),
+    pool.query(`select coalesce(sum(monto), 0)::float as total from pagos`),
+  ]);
+
+  res.json({
+    porCliente: (clientesRes.rows as Array<{ nombre: string; total: number }>).map((r) => ({
+      nombre: r.nombre,
+      total: Number(r.total),
+    })),
+    porRepartidor: (repartidoresRes.rows as Array<{ nombre: string; total: number }>).map((r) => ({
+      nombre: r.nombre,
+      total: Number(r.total),
+    })),
+    totalGeneral: Number((totalRes.rows[0] as { total: number }).total),
+  });
+});
+
 // GET /admin/pagos — el admin ve todos los cobros
 pagosRouter.get('/admin/pagos', requireAuth, async (req, res) => {
   const user = (req as typeof req & ReqWithUser).user;

@@ -15,6 +15,7 @@ import { pedidosCalleRouter } from './routes/pedidosCalle.js';
 import { rutasFijasRouter } from './routes/rutasFijas.js';
 import { pagosRouter } from './routes/pagos.js';
 import { iniciarSchedulerRutasFijas } from './cron/rutasFijasScheduler.js';
+import { iniciarSchedulerReporteMensual } from './cron/reporteMensualScheduler.js';
 import { iniciarServidorGT06 } from './gps-tracker/gt06.js';
 
 const app = express();
@@ -52,6 +53,7 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 const server = app.listen(config.port, () => {
   console.log(`API Del Centro listening on :${config.port}`);
   iniciarSchedulerRutasFijas();
+  iniciarSchedulerReporteMensual();
   iniciarServidorGT06(config.gt06Port);
 });
 

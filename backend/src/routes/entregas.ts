@@ -628,6 +628,24 @@ entregasRouter.post('/admin-reportes/inicio/guardar', requireAuth, async (req, r
   });
 });
 
+/** Calcula y persiste (upsert) el reporte mensual para el mes indicado. Usado por el cron automático. */
+export async function guardarReporteMensualCron(anio: number, mes1: number): Promise<void> {
+  await ensureCierresTable();
+  await ensureTipoVehiculoColumn();
+  await ensureReportesMensualesTable();
+  const rango = rangoDelMes(anio, mes1 - 1);
+  const datos = await calcularDashboardInicio(rango);
+  await pool.query(
+    `insert into reportes_mensuales (anio, mes, datos, guardado_por_id, guardado_por_nombre)
+     values ($1, $2, $3::jsonb, null, 'cron-automatico')
+     on conflict (anio, mes) do update
+       set datos = excluded.datos,
+           guardado_por_nombre = excluded.guardado_por_nombre,
+           created_at = now()`,
+    [rango.anio, rango.mes, JSON.stringify(datos)]
+  );
+}
+
 entregasRouter.get('/admin-reportes/inicio/historial', requireAuth, async (req, res) => {
   if (!requireAdminOrLogistica(req as ReqWithUser, res)) return;
   await ensureReportesMensualesTable();

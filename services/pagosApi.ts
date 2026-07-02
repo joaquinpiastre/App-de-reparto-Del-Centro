@@ -32,6 +32,21 @@ export interface PagoLista {
   creadoEn: string;
 }
 
+export interface CobrosStat {
+  nombre: string;
+  total: number;
+}
+
+export interface CobrosStatsResponse {
+  porCliente: CobrosStat[];
+  porRepartidor: CobrosStat[];
+  totalGeneral: number;
+}
+
+export async function obtenerCobrosStats(): Promise<CobrosStatsResponse> {
+  return apiRequest('/admin/pagos/stats');
+}
+
 export async function registrarPagoApi(payload: {
   clienteId: string;
   clienteNombre: string;

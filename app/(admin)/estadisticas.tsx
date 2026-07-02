@@ -1,16 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Dimensions, StyleSheet, Text, View } from 'react-native';
-import { BarChart } from 'react-native-chart-kit';
+import { BarChart, PieChart } from 'react-native-chart-kit';
 
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { COLORS } from '@/constants/colors';
 import { obtenerStatsAdmin, type AdminStatsResponse } from '@/services/adminReportes';
+import { obtenerCobrosStats, type CobrosStatsResponse } from '@/services/pagosApi';
 
 const chartW = Dimensions.get('window').width - 48;
 
+const PIE_COLORS = [
+  '#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#00695C',
+  '#AD1457', '#F57F17', '#37474F',
+];
+
+function fmt(n: number): string {
+  return `$${n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+}
+
 export default function Estadisticas() {
   const [stats, setStats] = useState<AdminStatsResponse | null>(null);
+  const [cobros, setCobros] = useState<CobrosStatsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,8 +29,12 @@ export default function Estadisticas() {
     try {
       setLoading(true);
       setError(null);
-      const data = await obtenerStatsAdmin();
-      setStats(data);
+      const [dataStats, dataCobros] = await Promise.all([
+        obtenerStatsAdmin(),
+        obtenerCobrosStats(),
+      ]);
+      setStats(dataStats);
+      setCobros(dataCobros);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudieron cargar las estadísticas.');
     } finally {
@@ -39,6 +54,17 @@ export default function Estadisticas() {
       minutos: series?.minutos ?? [],
     };
   }, [stats]);
+
+  const pieData = useMemo(() => {
+    if (!cobros || cobros.porCliente.length === 0) return [];
+    return cobros.porCliente.map((c, i) => ({
+      name: c.nombre.length > 14 ? c.nombre.slice(0, 13) + '…' : c.nombre,
+      population: c.total,
+      color: PIE_COLORS[i % PIE_COLORS.length]!,
+      legendFontColor: COLORS.grisTexto,
+      legendFontSize: 11,
+    }));
+  }, [cobros]);
 
   return (
     <Screen title="Estadísticas" subtitle="Métricas reales desde backend" scrollable>
@@ -128,6 +154,55 @@ export default function Estadisticas() {
             </View>
           </>
         )}
+
+        {/* ── Sección de cobros ── */}
+        <View style={styles.card}>
+          <Text style={styles.h}>Cobros registrados</Text>
+          {!cobros || cobros.porCliente.length === 0 ? (
+            <Text style={styles.text}>Todavía no hay cobros registrados.</Text>
+          ) : (
+            <>
+              <Text style={styles.totalCobros}>Total cobrado: {fmt(cobros.totalGeneral)}</Text>
+
+              <PieChart
+                data={pieData}
+                width={chartW}
+                height={200}
+                chartConfig={{
+                  color: () => '#000',
+                  labelColor: () => COLORS.grisTexto,
+                }}
+                accessor="population"
+                backgroundColor="transparent"
+                paddingLeft="8"
+                style={styles.chart}
+              />
+
+              {/* Lista con números reales */}
+              <View style={styles.cobrosLista}>
+                {cobros.porCliente.map((c, i) => (
+                  <View key={c.nombre} style={styles.cobrosRow}>
+                    <View style={[styles.colorDot, { backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }]} />
+                    <Text style={styles.cobrosNombre} numberOfLines={1}>{c.nombre}</Text>
+                    <Text style={styles.cobrosTotal}>{fmt(c.total)}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {cobros.porRepartidor.length > 0 && (
+                <>
+                  <Text style={[styles.h, { marginTop: 16 }]}>Por repartidor</Text>
+                  {cobros.porRepartidor.map((r) => (
+                    <View key={r.nombre} style={styles.cobrosRow}>
+                      <Text style={styles.cobrosNombre} numberOfLines={1}>{r.nombre}</Text>
+                      <Text style={styles.cobrosTotal}>{fmt(r.total)}</Text>
+                    </View>
+                  ))}
+                </>
+              )}
+            </>
+          )}
+        </View>
     </Screen>
   );
 }
@@ -138,4 +213,32 @@ const styles = StyleSheet.create({
   text: { fontFamily: 'Poppins_600SemiBold' },
   h: { fontFamily: 'Poppins_700Bold', marginBottom: 8 },
   chart: { borderRadius: 12, marginVertical: 8 },
+  totalCobros: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 16,
+    color: COLORS.verdeOscuro,
+    marginBottom: 8,
+  },
+  cobrosLista: { gap: 6, marginTop: 4 },
+  cobrosRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  colorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  cobrosNombre: {
+    flex: 1,
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    color: COLORS.grisTexto,
+  },
+  cobrosTotal: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 13,
+    color: COLORS.grisTexto,
+  },
 });
