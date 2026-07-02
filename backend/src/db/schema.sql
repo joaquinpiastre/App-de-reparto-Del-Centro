@@ -113,3 +113,25 @@ create table if not exists pedidos_admin_items (
   precio_unitario numeric(12,2) not null,
   subtotal numeric(12,2) not null
 );
+
+-- Registro de cobros realizados por los repartidores en la calle
+create table if not exists pagos (
+  id uuid primary key default gen_random_uuid(),
+  cliente_id text not null,
+  cliente_nombre text not null,
+  repartidor_id text not null references repartidores(id),
+  repartidor_nombre text not null,
+  monto numeric(12,2) not null,
+  metodo text not null,
+  numero_cheque text,
+  banco text,
+  observaciones text,
+  creado_en_ms bigint not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_pagos_repartidor_created
+  on pagos (repartidor_id, created_at desc);
+
+create index if not exists idx_pagos_created
+  on pagos (created_at desc);

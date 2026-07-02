@@ -225,6 +225,17 @@ export default function HomeRepartidor() {
 
         <Pressable
           style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
+          onPress={() => router.push('/(repartidor)/cobros')}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: '#e8f5e0' }]}>
+            <MaterialIcons name="payments" size={26} color={COLORS.verdeOscuro} />
+          </View>
+          <Text style={styles.actionLabel}>Cobros</Text>
+          <Text style={styles.actionSub}>Registrar un pago</Text>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
           onPress={() => Linking.openURL(`tel:${TEL_EMERGENCIA}`)}
         >
           <View style={[styles.actionIcon, { backgroundColor: '#fff0f0' }]}>

@@ -80,6 +80,20 @@ export default function AdminDashboard() {
         <Text style={styles.sub}>Pedidos levantados por repartidores durante la ruta.</Text>
       </View>
 
+      {/* Card cobros */}
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <MaterialIcons name="payments" size={22} color={COLORS.verdeOscuro} />
+          <Text style={styles.cardTitle}>Cobros</Text>
+        </View>
+        <Text style={styles.sub}>Pagos registrados por los repartidores en la calle.</Text>
+        <Button
+          label="Ver cobros"
+          variant="secondary"
+          onPress={() => router.push('/(admin)/cobros')}
+        />
+      </View>
+
       <DashboardInicio />
 
       <Button label="Cerrar sesión" onPress={cerrarSesion} variant="danger" />

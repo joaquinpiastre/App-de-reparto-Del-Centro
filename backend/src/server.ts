@@ -13,6 +13,7 @@ import { gpsRouter } from './routes/gps.js';
 import { healthRouter } from './routes/health.js';
 import { pedidosCalleRouter } from './routes/pedidosCalle.js';
 import { rutasFijasRouter } from './routes/rutasFijas.js';
+import { pagosRouter } from './routes/pagos.js';
 import { iniciarSchedulerRutasFijas } from './cron/rutasFijasScheduler.js';
 import { iniciarServidorGT06 } from './gps-tracker/gt06.js';
 
@@ -38,6 +39,7 @@ app.use(gpsRouter);
 app.use(pedidosCalleRouter);
 app.use(rutasFijasRouter);
 app.use(entregasRouter);
+app.use(pagosRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const message = err instanceof Error ? err.message : String(err);
