@@ -2,6 +2,7 @@ import { API_ENABLED } from '@/constants/api';
 import { apiRequest } from './apiClient';
 
 export type TipoCatalogoCliente = 'cliente' | 'taller';
+export type CategoriaCliente = 'A' | 'B' | 'C';
 
 export interface ClienteAdminCatalogo {
   id: string;
@@ -10,6 +11,7 @@ export interface ClienteAdminCatalogo {
   telefono: string;
   pedido: string;
   tipo: TipoCatalogoCliente;
+  categorias: CategoriaCliente[];
 }
 
 function normalizarClienteApi(raw: {
@@ -19,8 +21,12 @@ function normalizarClienteApi(raw: {
   telefono: string;
   pedido: string;
   tipo?: string | null;
+  categorias?: string[] | null;
 }): ClienteAdminCatalogo {
   const tipo: TipoCatalogoCliente = raw.tipo === 'taller' ? 'taller' : 'cliente';
+  const categorias = (raw.categorias ?? []).filter((c): c is CategoriaCliente =>
+    c === 'A' || c === 'B' || c === 'C'
+  );
   return {
     id: raw.id,
     nombre: raw.nombre,
@@ -28,10 +34,10 @@ function normalizarClienteApi(raw: {
     telefono: raw.telefono,
     pedido: raw.pedido,
     tipo,
+    categorias,
   };
 }
 
-/** Solo si la API está desactivada: lista vacía (sin datos ficticios). Configurá EXPO_PUBLIC_API_URL para producción. */
 let clientesLocales: ClienteAdminCatalogo[] = [];
 
 export async function listarClientesAdmin(): Promise<ClienteAdminCatalogo[]> {
@@ -50,6 +56,7 @@ export async function crearClienteAdmin(
       id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       ...payload,
       tipo: payload.tipo ?? 'cliente',
+      categorias: payload.categorias ?? [],
     };
     clientesLocales = [nuevo, ...clientesLocales];
     return nuevo;
@@ -67,7 +74,7 @@ export async function actualizarClienteAdmin(
 ): Promise<ClienteAdminCatalogo> {
   if (!API_ENABLED) {
     clientesLocales = clientesLocales.map((c) =>
-      c.id === id ? { ...c, ...payload, tipo: payload.tipo ?? c.tipo } : c
+      c.id === id ? { ...c, ...payload, tipo: payload.tipo ?? c.tipo, categorias: payload.categorias ?? c.categorias } : c
     );
     const up = clientesLocales.find((c) => c.id === id);
     if (!up) throw new Error('Cliente no encontrado.');

@@ -47,8 +47,20 @@ function msHastaMedianocheArgentina(): number {
 
 // ─── Lógica de aplicación ─────────────────────────────────────────────────────
 
+/** Devuelve la categoría que corresponde a un día de semana (0=Dom…6=Sáb), o null si no hay visitas ese día. */
+function categoriaDel(diaSemana: number): 'A' | 'B' | 'C' | null {
+  if (diaSemana === 1 || diaSemana === 3) return 'A'; // Lunes, Miércoles
+  if (diaSemana === 2 || diaSemana === 4) return 'B'; // Martes, Jueves
+  if (diaSemana === 5) return 'C';                    // Viernes
+  return null;                                         // Sábado, Domingo
+}
+
 /**
- * Aplica la ruta fija de TODOS los repartidores activos para `fecha`.
+ * Aplica la ruta fija de TODOS los repartidores activos para `fecha`,
+ * incluyendo únicamente los clientes cuya categoría corresponde al día de semana.
+ * Categoría A → lunes y miércoles. B → martes y jueves. C → viernes.
+ * Sábado y domingo no generan asignaciones automáticas.
+ *
  * Es idempotente: si ya existen asignaciones para ese día y repartidor, las omite.
  *
  * @returns Resumen con totales de generados/omitidos por repartidor.
@@ -57,6 +69,18 @@ export async function aplicarTodasLasRutasFijas(
   fecha: string,
 ): Promise<{ repartidor: string; generados: number; omitidos: number }[]> {
   const resultado: { repartidor: string; generados: number; omitidos: number }[] = [];
+
+  // Determinar categoría para este día
+  const [anio, mes, dia] = fecha.split('-').map(Number);
+  const diaSemana = new Date(anio!, mes! - 1, dia!).getDay();
+  const categoria = categoriaDel(diaSemana);
+
+  if (categoria === null) {
+    console.log(`[Cron] ${fecha} es sábado o domingo — sin asignaciones automáticas.`);
+    return resultado;
+  }
+
+  console.log(`[Cron] ${fecha} (día ${diaSemana}) → categoría ${categoria}`);
 
   // Asegurar que la tabla rutas_fijas existe (idempotente)
   await pool.query(`
@@ -84,13 +108,15 @@ export async function aplicarTodasLasRutasFijas(
   }
 
   for (const rep of repartidores) {
-    // Clientes de su ruta fija (en orden)
+    // Clientes de su ruta fija que tienen la categoría del día (en orden)
     const { rows: rutaFija } = await pool.query<{ clienteId: string; orden: number }>(
-      `SELECT cliente_id AS "clienteId", orden
-         FROM rutas_fijas
-        WHERE repartidor_id = $1
-        ORDER BY orden ASC`,
-      [rep.id],
+      `SELECT rf.cliente_id AS "clienteId", rf.orden
+         FROM rutas_fijas rf
+         JOIN clientes c ON c.id = rf.cliente_id AND c.activo = true
+        WHERE rf.repartidor_id = $1
+          AND $2 = ANY(c.categorias)
+        ORDER BY rf.orden ASC`,
+      [rep.id, categoria],
     );
 
     if (rutaFija.length === 0) continue;
