@@ -35,6 +35,10 @@ import {
   aplicarTodasLasRutasFijasManual,
   type ClienteRutaFija,
 } from '@/services/rutasFijas';
+import {
+  aplicarListaCategoria,
+  type CategoriaLista,
+} from '@/services/listasCategorias';
 import type { Asignacion, ClienteCatalogo, Usuario } from '@/types';
 
 const hoy = () => fechaHoyArgentina();
@@ -182,6 +186,10 @@ export default function Asignaciones() {
   const [busquedaRutaFija, setBusquedaRutaFija] = useState('');
   const [guardandoRutaFija, setGuardandoRutaFija] = useState(false);
   const [generando, setGenerando] = useState(false);
+
+  // Aplicar lista de categoría
+  const [modalListaCatVisible, setModalListaCatVisible] = useState(false);
+  const [aplicandoListaCat, setAplicandoListaCat] = useState(false);
 
   // ── Drag-and-drop ──────────────────────────────────────────────────────────
   const [localOrder, setLocalOrder] = useState<Asignacion[]>([]);
@@ -338,6 +346,26 @@ export default function Asignaciones() {
       Alert.alert('Error al aplicar', e instanceof Error ? e.message : 'No se pudo aplicar la ruta.');
     } finally {
       setGenerando(false);
+    }
+  };
+
+  const aplicarListaCat = async (cat: CategoriaLista) => {
+    if (!repSeleccionado) return;
+    setAplicandoListaCat(true);
+    try {
+      const result = await aplicarListaCategoria(cat, repSeleccionado.id, fecha);
+      setModalListaCatVisible(false);
+      await cargarAsignaciones();
+      Alert.alert(
+        'Lista aplicada',
+        result.generados > 0
+          ? `${result.generados} asignación(es) generadas desde la lista ${cat}.${result.omitidos > 0 ? ` (${result.omitidos} ya existían)` : ''}`
+          : `Todas las visitas de la lista ${cat} ya estaban asignadas para este día.`
+      );
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo aplicar la lista.');
+    } finally {
+      setAplicandoListaCat(false);
     }
   };
 
@@ -583,6 +611,63 @@ export default function Asignaciones() {
           </View>
         </View>
       ) : null}
+
+      {/* Card: aplicar lista de categoría */}
+      {repSeleccionado ? (
+        <Pressable
+          style={styles.listaCardBtn}
+          onPress={() => setModalListaCatVisible(true)}
+        >
+          <MaterialIcons name="list-alt" size={18} color="#1565C0" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.listaCardTit}>Aplicar lista de categoría</Text>
+            <Text style={styles.listaCardSub}>
+              Asignar la lista A, B, C o D a {repSeleccionado.nombre} para el {formatFecha(fecha)}
+            </Text>
+          </View>
+          <MaterialIcons name="chevron-right" size={20} color="#1565C0" />
+        </Pressable>
+      ) : null}
+
+      {/* Modal selector de categoría */}
+      <Modal visible={modalListaCatVisible} transparent animationType="fade">
+        <View style={styles.modalListaCatOverlay}>
+          <View style={styles.modalListaCatBox}>
+            <Text style={styles.modalListaCatTit}>¿Qué lista aplicar?</Text>
+            <Text style={styles.modalListaCatSub}>
+              Se agregarán todos los clientes de esa lista a las asignaciones de{' '}
+              <Text style={{ fontFamily: 'Poppins_700Bold' }}>{repSeleccionado?.nombre}</Text>
+              {' '}para el {formatFecha(fecha)}.
+            </Text>
+            {(['A', 'B', 'C', 'D'] as CategoriaLista[]).map((cat) => {
+              const colores: Record<CategoriaLista, string> = { A: '#2E7D32', B: '#1565C0', C: '#E65100', D: '#7B1FA2' };
+              const bgs: Record<CategoriaLista, string> = { A: '#e8f5e9', B: '#e3f2fd', C: '#fff3e0', D: '#f3e5f5' };
+              const labels: Record<CategoriaLista, string> = { A: 'Lista A · Lun/Mié', B: 'Lista B · Mar/Jue', C: 'Lista C · Vie', D: 'Lista D · Andrés' };
+              return (
+                <Pressable
+                  key={cat}
+                  style={[styles.modalListaCatOpcion, { backgroundColor: bgs[cat], borderColor: colores[cat] }]}
+                  onPress={() => void aplicarListaCat(cat)}
+                  disabled={aplicandoListaCat}
+                >
+                  <View style={[styles.modalListaCatLetra, { backgroundColor: colores[cat] }]}>
+                    <Text style={styles.modalListaCatLetraTxt}>{cat}</Text>
+                  </View>
+                  <Text style={[styles.modalListaCatLabel, { color: colores[cat] }]}>{labels[cat]}</Text>
+                  {aplicandoListaCat && <ActivityIndicator size="small" color={colores[cat]} />}
+                </Pressable>
+              );
+            })}
+            <Pressable
+              style={styles.modalListaCatCancelar}
+              onPress={() => setModalListaCatVisible(false)}
+              disabled={aplicandoListaCat}
+            >
+              <Text style={styles.modalListaCatCancelarTxt}>Cancelar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       {/* Botón global: aplicar rutas fijas de TODOS los repartidores para hoy */}
       <View style={styles.aplicarTodasCard}>
@@ -1181,4 +1266,47 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     lineHeight: 20,
   },
+
+  // Card "aplicar lista de categoría"
+  listaCardBtn: {
+    backgroundColor: '#e3f2fd',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#90caf9',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  listaCardTit: { fontFamily: 'Poppins_700Bold', fontSize: 14, color: '#1565C0' },
+  listaCardSub: { fontFamily: 'Poppins_400Regular', fontSize: 12, color: '#1e88e5', marginTop: 2, lineHeight: 18 },
+
+  // Modal selector de categoría
+  modalListaCatOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalListaCatBox: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    gap: 14,
+  },
+  modalListaCatTit: { fontFamily: 'Poppins_700Bold', fontSize: 18, color: COLORS.grisTexto },
+  modalListaCatSub: { fontFamily: 'Poppins_400Regular', fontSize: 13, color: COLORS.grisSecundario, lineHeight: 20 },
+  modalListaCatOpcion: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    padding: 14,
+  },
+  modalListaCatLetra: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  modalListaCatLetraTxt: { fontFamily: 'Poppins_700Bold', fontSize: 20, color: '#fff' },
+  modalListaCatLabel: { fontFamily: 'Poppins_600SemiBold', fontSize: 15, flex: 1 },
+  modalListaCatCancelar: { padding: 14, alignItems: 'center' },
+  modalListaCatCancelarTxt: { fontFamily: 'Poppins_600SemiBold', fontSize: 15, color: COLORS.grisSecundario },
 });
