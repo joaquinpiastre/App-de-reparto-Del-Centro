@@ -158,18 +158,18 @@ rutasFijasRouter.get('/admin/planificacion', requireAuth, async (req, res) => {
   async function queryCategoria(cat: string) {
     const { rows } = await pool.query(
       `SELECT r.id AS "repartidorId", r.nombre AS "repartidorNombre",
-              rf.cliente_id AS "clienteId", rf.orden,
+              c.id AS "clienteId", rf.orden,
               c.nombre AS "clienteNombre", c.direccion, c.tipo, c.categorias
          FROM repartidores r
          LEFT JOIN rutas_fijas rf ON rf.repartidor_id = r.id
-         LEFT JOIN clientes c ON c.id = rf.cliente_id AND c.activo = true
+         LEFT JOIN clientes c ON c.id = rf.cliente_id
+                              AND c.activo = true
                               AND $1 = ANY(c.categorias)
         WHERE r.activo = true AND r.rol = 'repartidor'
         ORDER BY r.nombre, rf.orden ASC`,
       [cat]
     );
 
-    // Agrupar por repartidor
     const map = new Map<string, { id: string; nombre: string; clientes: unknown[] }>();
     for (const row of rows as Array<{
       repartidorId: string; repartidorNombre: string;
@@ -180,7 +180,8 @@ rutasFijasRouter.get('/admin/planificacion', requireAuth, async (req, res) => {
       if (!map.has(row.repartidorId)) {
         map.set(row.repartidorId, { id: row.repartidorId, nombre: row.repartidorNombre, clientes: [] });
       }
-      if (row.clienteId) {
+      // Solo incluir si el cliente existe Y tiene la categoría (clienteId no null)
+      if (row.clienteId && row.clienteNombre) {
         map.get(row.repartidorId)!.clientes.push({
           id: row.clienteId,
           nombre: row.clienteNombre,
@@ -221,6 +222,61 @@ rutasFijasRouter.get('/admin/planificacion', requireAuth, async (req, res) => {
     viernes:   { categoria: 'C', repartidores: catC },
     andres:    { categoria: 'D', clientes: andres },
   });
+});
+
+// PATCH /rutas-fijas/:repartidorId/reordenar-subset
+// Reordena un subconjunto de clientes en rutas_fijas preservando la posición relativa del resto.
+// Body: { clienteIds: string[] } — el subconjunto en el nuevo orden deseado.
+rutasFijasRouter.patch('/rutas-fijas/:repartidorId/reordenar-subset', requireAuth, async (req, res) => {
+  const user = (req as unknown as ReqWithUser).user!;
+  if (user.rol !== 'admin') {
+    res.status(403).json({ error: 'Solo admins pueden reordenar rutas.' });
+    return;
+  }
+  const parsed = putSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Payload inválido.' });
+    return;
+  }
+  const repartidorId = req.params.repartidorId;
+  const newSubsetOrder = parsed.data.clienteIds;
+
+  await ensureTable();
+
+  // Orden completo actual
+  const { rows: fullRows } = await pool.query<{ cliente_id: string }>(
+    `SELECT cliente_id FROM rutas_fijas WHERE repartidor_id = $1 ORDER BY orden ASC`,
+    [repartidorId]
+  );
+  const fullOrder = fullRows.map((r) => r.cliente_id);
+  const subsetSet = new Set(newSubsetOrder);
+
+  // Posiciones (índices) que actualmente ocupan los ítems del subconjunto
+  const subsetPositions = fullOrder
+    .map((id, idx) => ({ id, idx }))
+    .filter(({ id }) => subsetSet.has(id))
+    .map(({ idx }) => idx);
+
+  // Colocar el subconjunto en su nuevo orden en esas mismas posiciones
+  const newFullOrder = [...fullOrder];
+  for (let i = 0; i < subsetPositions.length && i < newSubsetOrder.length; i++) {
+    newFullOrder[subsetPositions[i]] = newSubsetOrder[i];
+  }
+
+  await pool.query('BEGIN');
+  try {
+    for (let i = 0; i < newFullOrder.length; i++) {
+      await pool.query(
+        `UPDATE rutas_fijas SET orden = $3 WHERE repartidor_id = $1 AND cliente_id = $2`,
+        [repartidorId, newFullOrder[i], i]
+      );
+    }
+    await pool.query('COMMIT');
+    res.json({ ok: true, total: newFullOrder.length });
+  } catch (e) {
+    await pool.query('ROLLBACK');
+    throw e;
+  }
 });
 
 // POST /rutas-fijas/aplicar-todas?fecha=YYYY-MM-DD
