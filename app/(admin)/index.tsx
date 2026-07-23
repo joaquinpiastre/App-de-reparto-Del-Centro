@@ -80,6 +80,20 @@ export default function AdminDashboard() {
         <Text style={styles.sub}>Pedidos levantados por repartidores durante la ruta.</Text>
       </View>
 
+      {/* Card planificación semanal */}
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <MaterialIcons name="calendar-today" size={22} color={COLORS.acentoAzul} />
+          <Text style={styles.cardTitle}>Planificación semanal</Text>
+        </View>
+        <Text style={styles.sub}>Rutas organizadas por día y categoría (A/B/C).</Text>
+        <Button
+          label="Ver planificación"
+          variant="secondary"
+          onPress={() => router.push('/(admin)/planificacion')}
+        />
+      </View>
+
       {/* Card cobros */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>

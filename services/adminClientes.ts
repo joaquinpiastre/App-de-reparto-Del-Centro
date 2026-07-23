@@ -2,7 +2,7 @@ import { API_ENABLED } from '@/constants/api';
 import { apiRequest } from './apiClient';
 
 export type TipoCatalogoCliente = 'cliente' | 'taller';
-export type CategoriaCliente = 'A' | 'B' | 'C';
+export type CategoriaCliente = 'A' | 'B' | 'C' | 'D';
 
 export interface ClienteAdminCatalogo {
   id: string;

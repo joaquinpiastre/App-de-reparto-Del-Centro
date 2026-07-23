@@ -5,7 +5,7 @@ import { pool } from '../db/client.js';
 
 type ReqWithUser = { user?: { sub: string; rol: 'admin' | 'repartidor' } };
 
-const categoriaSchema = z.array(z.enum(['A', 'B', 'C'])).optional().default([]);
+const categoriaSchema = z.array(z.enum(['A', 'B', 'C', 'D'])).optional().default([]);
 
 const crearClienteSchema = z.object({
   nombre: z.string().trim().min(2),

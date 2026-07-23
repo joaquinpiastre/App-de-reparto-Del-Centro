@@ -142,6 +142,87 @@ rutasFijasRouter.post('/rutas-fijas/:repartidorId/generar', requireAuth, async (
   res.json({ generados, omitidos });
 });
 
+// GET /admin/planificacion
+// Devuelve, para cada día de la semana (lun-vie), la lista de repartidores con sus
+// clientes/talleres ordenados según la ruta fija y la categoría del día.
+rutasFijasRouter.get('/admin/planificacion', requireAuth, async (req, res) => {
+  const user = (req as unknown as ReqWithUser).user!;
+  if (user.rol !== 'admin') {
+    res.status(403).json({ error: 'Solo admin puede ver la planificación.' });
+    return;
+  }
+  await ensureTable();
+
+  // Query por categoría: devuelve todos los repartidores activos con sus clientes (en orden)
+  // que tienen esa categoría. También incluye repartidores sin clientes de esa categoría (array vacío).
+  async function queryCategoria(cat: string) {
+    const { rows } = await pool.query(
+      `SELECT r.id AS "repartidorId", r.nombre AS "repartidorNombre",
+              rf.cliente_id AS "clienteId", rf.orden,
+              c.nombre AS "clienteNombre", c.direccion, c.tipo, c.categorias
+         FROM repartidores r
+         LEFT JOIN rutas_fijas rf ON rf.repartidor_id = r.id
+         LEFT JOIN clientes c ON c.id = rf.cliente_id AND c.activo = true
+                              AND $1 = ANY(c.categorias)
+        WHERE r.activo = true AND r.rol = 'repartidor'
+        ORDER BY r.nombre, rf.orden ASC`,
+      [cat]
+    );
+
+    // Agrupar por repartidor
+    const map = new Map<string, { id: string; nombre: string; clientes: unknown[] }>();
+    for (const row of rows as Array<{
+      repartidorId: string; repartidorNombre: string;
+      clienteId: string | null; orden: number | null;
+      clienteNombre: string | null; direccion: string | null;
+      tipo: string | null; categorias: string[] | null;
+    }>) {
+      if (!map.has(row.repartidorId)) {
+        map.set(row.repartidorId, { id: row.repartidorId, nombre: row.repartidorNombre, clientes: [] });
+      }
+      if (row.clienteId) {
+        map.get(row.repartidorId)!.clientes.push({
+          id: row.clienteId,
+          nombre: row.clienteNombre,
+          direccion: row.direccion,
+          tipo: row.tipo,
+          categorias: row.categorias ?? [],
+          orden: row.orden ?? 0,
+        });
+      }
+    }
+    return Array.from(map.values());
+  }
+
+  // Query para categoría D: lista plana de todos los clientes (sin repartidor asignado por día)
+  async function queryAndres() {
+    const { rows } = await pool.query(
+      `SELECT c.id, c.nombre, c.direccion, c.tipo, c.categorias
+         FROM clientes c
+        WHERE c.activo = true AND 'D' = ANY(c.categorias)
+        ORDER BY c.nombre ASC`
+    );
+    return (rows as Array<{ id: string; nombre: string; direccion: string; tipo: string; categorias: string[] }>)
+      .map((c) => ({ id: c.id, nombre: c.nombre, direccion: c.direccion, tipo: c.tipo, categorias: c.categorias, orden: 0 }));
+  }
+
+  const [catA, catB, catC, andres] = await Promise.all([
+    queryCategoria('A'),
+    queryCategoria('B'),
+    queryCategoria('C'),
+    queryAndres(),
+  ]);
+
+  res.json({
+    lunes:     { categoria: 'A', repartidores: catA },
+    martes:    { categoria: 'B', repartidores: catB },
+    miercoles: { categoria: 'A', repartidores: catA },
+    jueves:    { categoria: 'B', repartidores: catB },
+    viernes:   { categoria: 'C', repartidores: catC },
+    andres:    { categoria: 'D', clientes: andres },
+  });
+});
+
 // POST /rutas-fijas/aplicar-todas?fecha=YYYY-MM-DD
 // Admin: aplica la ruta fija de TODOS los repartidores activos para la fecha indicada
 // (o para hoy Argentina si no se indica fecha). Idempotente.
