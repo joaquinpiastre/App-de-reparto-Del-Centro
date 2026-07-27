@@ -2,7 +2,7 @@ import { API_ENABLED } from '@/constants/api';
 import { apiRequest } from './apiClient';
 
 export type TipoCatalogoCliente = 'cliente' | 'taller';
-export type CategoriaCliente = 'A' | 'B' | 'C' | 'D';
+export type CategoriaCliente = 'A' | 'B' | 'C' | 'D' | 'E';
 
 export interface ClienteAdminCatalogo {
   id: string;
@@ -25,7 +25,7 @@ function normalizarClienteApi(raw: {
 }): ClienteAdminCatalogo {
   const tipo: TipoCatalogoCliente = raw.tipo === 'taller' ? 'taller' : 'cliente';
   const categorias = (raw.categorias ?? []).filter((c): c is CategoriaCliente =>
-    c === 'A' || c === 'B' || c === 'C'
+    c === 'A' || c === 'B' || c === 'C' || c === 'D' || c === 'E'
   );
   return {
     id: raw.id,

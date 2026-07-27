@@ -1,6 +1,6 @@
 import { apiRequest } from './apiClient';
 
-export type CategoriaLista = 'A' | 'B' | 'C' | 'D';
+export type CategoriaLista = 'A' | 'B' | 'C' | 'D' | 'E';
 
 export interface ClienteLista {
   id: string;

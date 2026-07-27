@@ -7,7 +7,7 @@ export const listasCategoriasRouter = Router();
 
 type ReqWithUser = { user?: { rol: string } };
 
-const CATS = ['A', 'B', 'C', 'D'] as const;
+const CATS = ['A', 'B', 'C', 'D', 'E'] as const;
 type Cat = (typeof CATS)[number];
 
 const isValidCat = (c: string): c is Cat => (CATS as readonly string[]).includes(c);
@@ -15,11 +15,21 @@ const isValidCat = (c: string): c is Cat => (CATS as readonly string[]).includes
 async function ensureTable(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS listas_categoria (
-      categoria  TEXT    NOT NULL CHECK (categoria IN ('A','B','C','D')),
+      categoria  TEXT    NOT NULL CHECK (categoria IN ('A','B','C','D','E')),
       cliente_id TEXT    NOT NULL,
       orden      INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (categoria, cliente_id)
     )
+  `);
+  // Migración: ampliar el CHECK constraint si ya existía con el valor viejo
+  await pool.query(`
+    ALTER TABLE listas_categoria
+      DROP CONSTRAINT IF EXISTS listas_categoria_categoria_check
+  `);
+  await pool.query(`
+    ALTER TABLE listas_categoria
+      ADD CONSTRAINT listas_categoria_categoria_check
+      CHECK (categoria IN ('A','B','C','D','E'))
   `);
   // Poblar desde categorias[] existentes en clientes (solo si la tabla está vacía)
   const { rows: [{ count }] } = await pool.query<{ count: string }>(

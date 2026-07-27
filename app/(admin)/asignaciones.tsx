@@ -639,10 +639,10 @@ export default function Asignaciones() {
               <Text style={{ fontFamily: 'Poppins_700Bold' }}>{repSeleccionado?.nombre}</Text>
               {' '}para el {formatFecha(fecha)}.
             </Text>
-            {(['A', 'B', 'C', 'D'] as CategoriaLista[]).map((cat) => {
-              const colores: Record<CategoriaLista, string> = { A: '#2E7D32', B: '#1565C0', C: '#E65100', D: '#7B1FA2' };
-              const bgs: Record<CategoriaLista, string> = { A: '#e8f5e9', B: '#e3f2fd', C: '#fff3e0', D: '#f3e5f5' };
-              const labels: Record<CategoriaLista, string> = { A: 'Lista A · Lun/Mié', B: 'Lista B · Mar/Jue', C: 'Lista C · Vie', D: 'Lista D · Andrés' };
+            {(['A', 'B', 'C', 'D', 'E'] as CategoriaLista[]).map((cat) => {
+              const colores: Record<CategoriaLista, string> = { A: '#2E7D32', B: '#1565C0', C: '#E65100', D: '#7B1FA2', E: '#AD1457' };
+              const bgs: Record<CategoriaLista, string> = { A: '#e8f5e9', B: '#e3f2fd', C: '#fff3e0', D: '#f3e5f5', E: '#fce4ec' };
+              const labels: Record<CategoriaLista, string> = { A: 'Lista A · Lun/Mié', B: 'Lista B · Mar/Jue', C: 'Lista C · Vie', D: 'Lista D · Andrés', E: 'Lista E · Sábado' };
               return (
                 <Pressable
                   key={cat}

@@ -48,11 +48,12 @@ function msHastaMedianocheArgentina(): number {
 // ─── Lógica de aplicación ─────────────────────────────────────────────────────
 
 /** Devuelve la categoría que corresponde a un día de semana (0=Dom…6=Sáb), o null si no hay visitas ese día. */
-function categoriaDel(diaSemana: number): 'A' | 'B' | 'C' | null {
+function categoriaDel(diaSemana: number): 'A' | 'B' | 'C' | 'E' | null {
   if (diaSemana === 1 || diaSemana === 3) return 'A'; // Lunes, Miércoles
   if (diaSemana === 2 || diaSemana === 4) return 'B'; // Martes, Jueves
   if (diaSemana === 5) return 'C';                    // Viernes
-  return null;                                         // Sábado, Domingo
+  if (diaSemana === 6) return 'E';                    // Sábado
+  return null;                                         // Domingo
 }
 
 /**

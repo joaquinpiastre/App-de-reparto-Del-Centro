@@ -28,23 +28,24 @@ import {
 import { apiRequest } from '@/services/apiClient';
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
-const CATS: CategoriaLista[] = ['A', 'B', 'C', 'D'];
+const CATS: CategoriaLista[] = ['A', 'B', 'C', 'D', 'E'];
 
 const CAT_LABEL: Record<CategoriaLista, string> = {
   A: 'Lista A · Lun / Mié',
   B: 'Lista B · Mar / Jue',
   C: 'Lista C · Vie',
   D: 'Lista D · Andrés',
+  E: 'Lista E · Sábado',
 };
 
 const CAT_COLOR: Record<CategoriaLista, string> = {
-  A: '#2E7D32', B: '#1565C0', C: '#E65100', D: '#7B1FA2',
+  A: '#2E7D32', B: '#1565C0', C: '#E65100', D: '#7B1FA2', E: '#AD1457',
 };
 const CAT_BG: Record<CategoriaLista, string> = {
-  A: '#e8f5e9', B: '#e3f2fd', C: '#fff3e0', D: '#f3e5f5',
+  A: '#e8f5e9', B: '#e3f2fd', C: '#fff3e0', D: '#f3e5f5', E: '#fce4ec',
 };
 const CAT_BORDER: Record<CategoriaLista, string> = {
-  A: '#a5d6a7', B: '#90caf9', C: '#ffcc80', D: '#ce93d8',
+  A: '#a5d6a7', B: '#90caf9', C: '#ffcc80', D: '#ce93d8', E: '#f48fb1',
 };
 
 // ─── DragHandle ──────────────────────────────────────────────────────────────
@@ -247,7 +248,7 @@ interface ClienteApi {
 export default function Planificacion() {
   const [tabActivo, setTabActivo] = useState<CategoriaLista>('A');
   const [listas, setListas] = useState<Record<CategoriaLista, ClienteLista[]>>({
-    A: [], B: [], C: [], D: [],
+    A: [], B: [], C: [], D: [], E: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -270,13 +271,14 @@ export default function Planificacion() {
     setLoading(true);
     setError(null);
     try {
-      const [a, b, c, d] = await Promise.all([
+      const [a, b, c, d, e] = await Promise.all([
         obtenerListaCategoria('A'),
         obtenerListaCategoria('B'),
         obtenerListaCategoria('C'),
         obtenerListaCategoria('D'),
+        obtenerListaCategoria('E'),
       ]);
-      setListas({ A: a, B: b, C: c, D: d });
+      setListas({ A: a, B: b, C: c, D: d, E: e });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cargar.');
     } finally {

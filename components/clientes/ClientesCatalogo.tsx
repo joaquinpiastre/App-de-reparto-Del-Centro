@@ -16,13 +16,14 @@ import {
   type TipoCatalogoCliente,
 } from '@/services/adminClientes';
 
-const CATEGORIAS: CategoriaCliente[] = ['A', 'B', 'C', 'D'];
+const CATEGORIAS: CategoriaCliente[] = ['A', 'B', 'C', 'D', 'E'];
 
 const CAT_LABEL: Record<CategoriaCliente, string> = {
   A: 'A · Lun/Mié',
   B: 'B · Mar/Jue',
   C: 'C · Vie',
   D: 'D · Andrés',
+  E: 'E · Sábado',
 };
 
 const CAT_COLOR: Record<CategoriaCliente, string> = {
@@ -30,6 +31,7 @@ const CAT_COLOR: Record<CategoriaCliente, string> = {
   B: '#1565C0',
   C: '#E65100',
   D: '#7B1FA2',
+  E: '#AD1457',
 };
 
 const CAT_BG: Record<CategoriaCliente, string> = {
@@ -37,6 +39,7 @@ const CAT_BG: Record<CategoriaCliente, string> = {
   B: '#e3f2fd',
   C: '#fff3e0',
   D: '#f3e5f5',
+  E: '#fce4ec',
 };
 
 function escapeHtml(s: string): string {
