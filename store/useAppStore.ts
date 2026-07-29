@@ -17,6 +17,7 @@ const BASE_COORDENADAS = { lat: -34.6177, lng: -68.3301 };
 // ─── Cola de sincronización offline ──────────────────────────────────────────
 // Cuando no hay red al confirmar una visita, se encola para reintentar después.
 const SYNC_KEY = 'visitas_pendientes_sync';
+const CIERRE_PENDIENTE_KEY = 'cierre_jornada_pendiente';
 const ROUTE_ORDER_KEY = 'jornada_client_order';
 // Respaldo local de clientesDelDia: permite restaurar la jornada tras un
 // reinicio/recarga de la pestaña aunque en ese momento no haya conexión
@@ -54,30 +55,46 @@ async function encolarSincronizacion(entry: PendienteSync): Promise<void> {
 
 export async function reintentarSincronizaciones(): Promise<void> {
   if (!API_ENABLED) return;
+
+  // Reintentar visitas individuales pendientes
   try {
     const str = await AsyncStorage.getItem(SYNC_KEY);
-    if (!str) return;
-    const lista = JSON.parse(str) as PendienteSync[];
-    if (!lista.length) return;
-    const sinConexion: PendienteSync[] = [];
-    for (const p of lista) {
-      try {
-        await actualizarEstadoAsignacion(p.asigId, p.estado, {
-          horaSalidaMs: p.horaSalidaMs,
-          jornadaId: p.jornadaId,
-          notasRepartidor: p.notasRepartidor,
-        });
-      } catch {
-        sinConexion.push(p); // Aún sin red, guardar para el próximo intento
+    if (str) {
+      const lista = JSON.parse(str) as PendienteSync[];
+      if (lista.length) {
+        const sinConexion: PendienteSync[] = [];
+        for (const p of lista) {
+          try {
+            await actualizarEstadoAsignacion(p.asigId, p.estado, {
+              horaSalidaMs: p.horaSalidaMs,
+              jornadaId: p.jornadaId,
+              notasRepartidor: p.notasRepartidor,
+            });
+          } catch {
+            sinConexion.push(p);
+          }
+        }
+        if (sinConexion.length === 0) {
+          await AsyncStorage.removeItem(SYNC_KEY);
+        } else {
+          await AsyncStorage.setItem(SYNC_KEY, JSON.stringify(sinConexion));
+        }
       }
-    }
-    if (sinConexion.length === 0) {
-      await AsyncStorage.removeItem(SYNC_KEY);
-    } else {
-      await AsyncStorage.setItem(SYNC_KEY, JSON.stringify(sinConexion));
     }
   } catch {
     // Silencioso
+  }
+
+  // Reintentar cierre de jornada pendiente (si falló la red al cerrar)
+  try {
+    const cierreStr = await AsyncStorage.getItem(CIERRE_PENDIENTE_KEY);
+    if (cierreStr) {
+      const payload = JSON.parse(cierreStr) as Parameters<typeof registrarCierreJornadaApi>[0];
+      await registrarCierreJornadaApi(payload);
+      await AsyncStorage.removeItem(CIERRE_PENDIENTE_KEY);
+    }
+  } catch {
+    // Sigue sin red — se reintentará la próxima vez que la app esté activa
   }
 }
 
@@ -305,6 +322,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
       };
     }
 
+    // Persistir el cierre ANTES de resetear el estado: si la app se cierra o pierde red
+    // en este punto, el cierre queda guardado y se reintenta en reintentarSincronizaciones().
+    if (payload) {
+      await AsyncStorage.setItem(CIERRE_PENDIENTE_KEY, JSON.stringify(payload)).catch(() => {});
+    }
+
     // Resetear estado inmediatamente para buena UX (pantalla vuelve a inicio rápido)
     set({
       jornadaActiva: false,
@@ -322,18 +345,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
     await detenerGPS(true).catch((err) => console.warn('detenerGPS:', err));
 
     // Reintentar sincronizaciones que quedaron pendientes sin red durante el turno
+    // (incluye el cierre que acabamos de encolar)
     await reintentarSincronizaciones().catch(() => {});
 
-    // Sincronizar con backend — cada llamada en su propio try-catch para que un fallo
-    // en una no impida que las demás se ejecuten
+    // Si reintentarSincronizaciones() ya envió el cierre, no queda nada pendiente.
+    // Si no (sin red), el cierre quedó en AsyncStorage y se enviará cuando vuelva la conexión.
     if (payload) {
-      try {
-        await registrarCierreJornadaApi(payload);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'No se pudo enviar el cierre al backend.';
-        Alert.alert('Cierre no sincronizado', `${msg}\n\nEl turno se cerró en el dispositivo.`);
-      }
-      // Siempre asociar los pedidos de calle a la jornada, aunque el cierre haya fallado
       try {
         await cerrarTurnoPedidosCalle(payload.jornadaId, payload.repartidorId);
       } catch {

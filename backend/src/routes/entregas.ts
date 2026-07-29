@@ -98,6 +98,10 @@ async function ensureCierresTable(): Promise<void> {
       created_at timestamptz not null default now()
     )`
   );
+  // Garantizar unicidad por jornada_id para que los reintentos no generen duplicados
+  await pool.query(
+    `create unique index if not exists cierres_jornada_jornada_id_idx on cierres_jornada (jornada_id)`
+  );
 }
 
 async function ensureRepartidorYJornada(
@@ -163,7 +167,8 @@ entregasRouter.post('/cierres-jornada', requireAuth, async (req, res) => {
   await pool.query(
     `insert into cierres_jornada
      (jornada_id, repartidor_id, repartidor_nombre, completados, total, minutos_en_ruta, fecha_iso)
-     values ($1,$2,$3,$4,$5,$6,$7)`,
+     values ($1,$2,$3,$4,$5,$6,$7)
+     on conflict (jornada_id) do nothing`,
     [c.jornadaId, c.repartidorId, c.repartidorNombre, c.completados, c.total, c.minutosEnRuta, c.fechaIso ?? null]
   );
   res.json({ ok: true });
