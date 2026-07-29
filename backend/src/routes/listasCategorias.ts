@@ -12,16 +12,31 @@ type Cat = (typeof CATS)[number];
 
 const isValidCat = (c: string): c is Cat => (CATS as readonly string[]).includes(c);
 
-async function ensureTable(): Promise<void> {
+// Se ejecuta una sola vez por proceso del servidor para evitar errores de concurrencia
+// cuando múltiples requests llegan al mismo tiempo (ej: Promise.all de 5 categorías).
+let _tableReadyPromise: Promise<void> | null = null;
+
+function ensureTable(): Promise<void> {
+  if (!_tableReadyPromise) {
+    _tableReadyPromise = _doEnsureTable().catch((err) => {
+      _tableReadyPromise = null; // permitir reintento si falló
+      throw err;
+    });
+  }
+  return _tableReadyPromise;
+}
+
+async function _doEnsureTable(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS listas_categoria (
-      categoria  TEXT    NOT NULL CHECK (categoria IN ('A','B','C','D','E')),
+      categoria  TEXT    NOT NULL,
       cliente_id TEXT    NOT NULL,
       orden      INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (categoria, cliente_id)
     )
   `);
-  // Migración: ampliar el CHECK constraint si ya existía con el valor viejo
+  // Migración: garantizar el CHECK constraint incluye todas las categorías vigentes.
+  // Usamos DROP + ADD para manejar tanto tablas nuevas como las que existían con menos categorías.
   await pool.query(`
     ALTER TABLE listas_categoria
       DROP CONSTRAINT IF EXISTS listas_categoria_categoria_check
@@ -40,7 +55,7 @@ async function ensureTable(): Promise<void> {
       INSERT INTO listas_categoria (categoria, cliente_id, orden)
       SELECT cat, c.id,
              (row_number() OVER (PARTITION BY cat ORDER BY c.nombre) - 1)::int
-      FROM clientes c, unnest(c.categorias) AS cat
+      FROM clientes c, LATERAL unnest(c.categorias) AS cat
       WHERE c.activo = true
       ON CONFLICT DO NOTHING
     `);
