@@ -25,6 +25,11 @@ import {
   type CategoriaLista,
   type ClienteLista,
 } from '@/services/listasCategorias';
+import {
+  obtenerAsignacionesListaCat,
+  guardarAsignacionListaCat,
+  quitarAsignacionListaCat,
+} from '@/services/asignacionListaCat';
 import { apiRequest } from '@/services/apiClient';
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
@@ -257,6 +262,12 @@ export default function Planificacion() {
   const [cargandoCatalogo, setCargandoCatalogo] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [agregando, setAgregando] = useState(false);
+  const [asignacionesCat, setAsignacionesCat] = useState<
+    Partial<Record<CategoriaLista, { id: string; nombre: string }>>
+  >({});
+  const [repartidoresCat, setRepartidoresCat] = useState<{ id: string; nombre: string }[]>([]);
+  const [modalRepVisible, setModalRepVisible] = useState(false);
+  const [guardandoRep, setGuardandoRep] = useState(false);
 
   const cargarTab = useCallback(async (cat: CategoriaLista) => {
     try {
@@ -271,14 +282,20 @@ export default function Planificacion() {
     setLoading(true);
     setError(null);
     try {
-      const [a, b, c, d, e] = await Promise.all([
+      const [listA, listB, listC, listD, listE, asigs] = await Promise.all([
         obtenerListaCategoria('A'),
         obtenerListaCategoria('B'),
         obtenerListaCategoria('C'),
         obtenerListaCategoria('D'),
         obtenerListaCategoria('E'),
+        obtenerAsignacionesListaCat(),
       ]);
-      setListas({ A: a, B: b, C: c, D: d, E: e });
+      setListas({ A: listA, B: listB, C: listC, D: listD, E: listE });
+      const map: Partial<Record<CategoriaLista, { id: string; nombre: string }>> = {};
+      for (const asig of asigs) {
+        map[asig.categoria] = { id: asig.repartidorId, nombre: asig.repartidorNombre };
+      }
+      setAsignacionesCat(map);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cargar.');
     } finally {
@@ -320,6 +337,41 @@ export default function Planificacion() {
       Alert.alert('Error', 'No se pudo agregar el cliente.');
     } finally {
       setAgregando(false);
+    }
+  };
+
+  const abrirSelectorRepartidor = async () => {
+    if (repartidoresCat.length === 0) {
+      try {
+        const data = await apiRequest<{ repartidores: { id: string; nombre: string }[] }>('/repartidores');
+        setRepartidoresCat(data.repartidores);
+      } catch {
+        Alert.alert('Error', 'No se pudo cargar los repartidores.');
+        return;
+      }
+    }
+    setModalRepVisible(true);
+  };
+
+  const seleccionarRepartidor = async (rep: { id: string; nombre: string } | null) => {
+    setModalRepVisible(false);
+    setGuardandoRep(true);
+    try {
+      if (rep) {
+        await guardarAsignacionListaCat(tabActivo, rep.id);
+        setAsignacionesCat((prev) => ({ ...prev, [tabActivo]: rep }));
+      } else {
+        await quitarAsignacionListaCat(tabActivo);
+        setAsignacionesCat((prev) => {
+          const next = { ...prev };
+          delete next[tabActivo];
+          return next;
+        });
+      }
+    } catch {
+      Alert.alert('Error', 'No se pudo guardar la asignación.');
+    } finally {
+      setGuardandoRep(false);
     }
   };
 
@@ -405,6 +457,24 @@ export default function Planificacion() {
         />
       </View>
 
+      {/* Repartidor asignado automáticamente a esta lista */}
+      <Pressable
+        style={[styles.repRow, { borderColor: CAT_BORDER[tabActivo] }]}
+        onPress={() => void abrirSelectorRepartidor()}
+        disabled={guardandoRep}
+      >
+        <MaterialIcons name="person" size={20} color={CAT_COLOR[tabActivo]} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.repLabel}>Repartidor asignado automáticamente</Text>
+          <Text style={[styles.repValor, { color: CAT_COLOR[tabActivo] }]}>
+            {guardandoRep
+              ? 'Guardando…'
+              : asignacionesCat[tabActivo]?.nombre ?? 'Sin asignar — tocar para configurar'}
+          </Text>
+        </View>
+        <MaterialIcons name="chevron-right" size={20} color={CAT_COLOR[tabActivo]} />
+      </Pressable>
+
       {loading ? (
         <ActivityIndicator color={COLORS.verdeOscuro} style={{ marginTop: 32 }} />
       ) : error ? (
@@ -422,6 +492,48 @@ export default function Planificacion() {
           />
         </View>
       )}
+
+      {/* Modal para seleccionar repartidor */}
+      <Modal visible={modalRepVisible} animationType="fade" transparent>
+        <View style={styles.repModalOverlay}>
+          <View style={styles.repModalBox}>
+            <Text style={[styles.repModalTit, { color: CAT_COLOR[tabActivo] }]}>
+              Lista {tabActivo} — ¿quién la hace?
+            </Text>
+            {repartidoresCat.map((rep) => (
+              <Pressable
+                key={rep.id}
+                style={[
+                  styles.repModalItem,
+                  asignacionesCat[tabActivo]?.id === rep.id && {
+                    backgroundColor: CAT_BG[tabActivo],
+                    borderColor: CAT_COLOR[tabActivo],
+                  },
+                ]}
+                onPress={() => void seleccionarRepartidor(rep)}
+              >
+                <MaterialIcons name="person" size={18} color={CAT_COLOR[tabActivo]} />
+                <Text style={styles.repModalItemTxt}>{rep.nombre}</Text>
+                {asignacionesCat[tabActivo]?.id === rep.id && (
+                  <MaterialIcons name="check-circle" size={18} color={CAT_COLOR[tabActivo]} />
+                )}
+              </Pressable>
+            ))}
+            {asignacionesCat[tabActivo] && (
+              <Pressable
+                style={[styles.repModalItem, { borderColor: '#e57373' }]}
+                onPress={() => void seleccionarRepartidor(null)}
+              >
+                <MaterialIcons name="person-off" size={18} color="#e57373" />
+                <Text style={[styles.repModalItemTxt, { color: '#e57373' }]}>Sin asignar</Text>
+              </Pressable>
+            )}
+            <Pressable style={styles.repModalCancelar} onPress={() => setModalRepVisible(false)}>
+              <Text style={styles.repModalCancelarTxt}>Cancelar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal para agregar cliente */}
       <Modal visible={modalAgregar} animationType="slide" presentationStyle="pageSheet">
@@ -537,6 +649,26 @@ const styles = StyleSheet.create({
   tipoBadgeCliente: { backgroundColor: '#e8f4ea' },
   tipoBadgeTaller: { backgroundColor: '#e3f2fd' },
   tipoBadgeTxt: { fontFamily: 'Poppins_600SemiBold', fontSize: 10, color: COLORS.grisTexto },
+
+  repRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#fff', borderRadius: 12, borderWidth: 1.5,
+    padding: 14, marginBottom: 12,
+  },
+  repLabel: { fontFamily: 'Poppins_400Regular', fontSize: 11, color: '#888', marginBottom: 2 },
+  repValor: { fontFamily: 'Poppins_600SemiBold', fontSize: 14 },
+
+  repModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 },
+  repModalBox: { backgroundColor: '#fff', borderRadius: 18, padding: 20, gap: 10 },
+  repModalTit: { fontFamily: 'Poppins_700Bold', fontSize: 16, marginBottom: 4 },
+  repModalItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderRadius: 12, borderWidth: 1.5, borderColor: '#e0e5ea',
+    paddingHorizontal: 14, paddingVertical: 12,
+  },
+  repModalItemTxt: { fontFamily: 'Poppins_600SemiBold', fontSize: 14, color: '#333', flex: 1 },
+  repModalCancelar: { marginTop: 4, alignItems: 'center', padding: 12 },
+  repModalCancelarTxt: { fontFamily: 'Poppins_600SemiBold', fontSize: 14, color: '#888' },
 
   errorBox: { backgroundColor: '#fff3f3', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#e06a6a', gap: 8 },
   errorTxt: { fontFamily: 'Poppins_400Regular', color: '#c0392b' },
