@@ -98,10 +98,27 @@ async function ensureCierresTable(): Promise<void> {
       created_at timestamptz not null default now()
     )`
   );
-  // Garantizar unicidad por jornada_id para que los reintentos no generen duplicados
-  await pool.query(
-    `create unique index if not exists cierres_jornada_jornada_id_idx on cierres_jornada (jornada_id)`
+  // Crear índice único en jornada_id para que los reintentos no generen duplicados.
+  // Primero eliminar duplicados viejos (quedarse con el más reciente de cada jornada).
+  const { rows: idxRows } = await pool.query<{ exists: boolean }>(
+    `select exists(
+       select 1 from pg_indexes
+       where tablename = 'cierres_jornada'
+         and indexname = 'cierres_jornada_jornada_id_idx'
+     ) as exists`
   );
+  if (!idxRows[0]?.exists) {
+    // Eliminar duplicados antes de crear el índice único
+    await pool.query(`
+      delete from cierres_jornada a
+      using cierres_jornada b
+      where a.ctid < b.ctid
+        and a.jornada_id = b.jornada_id
+    `);
+    await pool.query(
+      `create unique index if not exists cierres_jornada_jornada_id_idx on cierres_jornada (jornada_id)`
+    );
+  }
 }
 
 async function ensureRepartidorYJornada(
