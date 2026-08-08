@@ -18,40 +18,43 @@ import { Screen } from '@/components/ui/Screen';
 import { Button } from '@/components/ui/Button';
 import { COLORS } from '@/constants/colors';
 import {
-  obtenerListaCategoria,
-  guardarOrdenCategoria,
-  agregarClienteACategoria,
-  quitarClienteDeCategoria,
-  type CategoriaLista,
+  obtenerListas,
+  crearLista,
+  editarLista,
+  eliminarLista,
+  obtenerClientesDeLista,
+  guardarOrdenLista,
+  agregarClienteALista,
+  quitarClienteDeLista,
+  asignarRepartidorALista,
+  quitarAsignacionDeLista,
+  DIAS_SEMANA_LABEL,
+  DIAS_SEMANA_CORTO,
+  type Lista,
   type ClienteLista,
-} from '@/services/listasCategorias';
-import {
-  obtenerAsignacionesListaCat,
-  guardarAsignacionListaCat,
-  quitarAsignacionListaCat,
-} from '@/services/asignacionListaCat';
+} from '@/services/listas';
 import { apiRequest } from '@/services/apiClient';
 
-// ─── Constantes ──────────────────────────────────────────────────────────────
-const CATS: CategoriaLista[] = ['A', 'B', 'C', 'D', 'E'];
+// ─── Paleta de colores por lista (ciclo estable por índice) ───────────────────
+const PALETA = [
+  { color: '#2E7D32', bg: '#e8f5e9', border: '#a5d6a7' },
+  { color: '#1565C0', bg: '#e3f2fd', border: '#90caf9' },
+  { color: '#E65100', bg: '#fff3e0', border: '#ffcc80' },
+  { color: '#7B1FA2', bg: '#f3e5f5', border: '#ce93d8' },
+  { color: '#AD1457', bg: '#fce4ec', border: '#f48fb1' },
+  { color: '#00695C', bg: '#e0f2f1', border: '#80cbc4' },
+  { color: '#4E342E', bg: '#efebe9', border: '#bcaaa4' },
+];
+function colorDeLista(idx: number) {
+  return PALETA[idx % PALETA.length];
+}
 
-const CAT_LABEL: Record<CategoriaLista, string> = {
-  A: 'Lista A · Lun / Mié',
-  B: 'Lista B · Mar / Jue',
-  C: 'Lista C · Vie',
-  D: 'Lista D · Andrés',
-  E: 'Lista E · Sábado',
-};
+const DIAS_ORDEN = [1, 2, 3, 4, 5, 6, 0]; // lun..dom para mostrar el picker en orden natural
 
-const CAT_COLOR: Record<CategoriaLista, string> = {
-  A: '#2E7D32', B: '#1565C0', C: '#E65100', D: '#7B1FA2', E: '#AD1457',
-};
-const CAT_BG: Record<CategoriaLista, string> = {
-  A: '#e8f5e9', B: '#e3f2fd', C: '#fff3e0', D: '#f3e5f5', E: '#fce4ec',
-};
-const CAT_BORDER: Record<CategoriaLista, string> = {
-  A: '#a5d6a7', B: '#90caf9', C: '#ffcc80', D: '#ce93d8', E: '#f48fb1',
-};
+function resumenDias(dias: number[]): string {
+  if (dias.length === 0) return 'Sin día asignado';
+  return DIAS_ORDEN.filter((d) => dias.includes(d)).map((d) => DIAS_SEMANA_CORTO[d]).join(' / ');
+}
 
 // ─── DragHandle ──────────────────────────────────────────────────────────────
 interface DragHandleProps {
@@ -83,15 +86,16 @@ function DragHandle({ itemId, fromIndex, onStart, onMove, onEnd, onCancel }: Dra
   );
 }
 
-// ─── Lista arrastrable por categoría ─────────────────────────────────────────
-interface ListaCategoriaProps {
-  categoria: CategoriaLista;
+// ─── Lista arrastrable de clientes ────────────────────────────────────────────
+interface ListaClientesProps {
+  listaId: string;
+  color: string;
   clientes: ClienteLista[];
   onReordered: (nuevaLista: ClienteLista[]) => void;
   onQuitar: (clienteId: string, nombre: string) => void;
 }
 
-function ListaCategoria({ categoria, clientes, onReordered, onQuitar }: ListaCategoriaProps) {
+function ListaClientes({ listaId, color, clientes, onReordered, onQuitar }: ListaClientesProps) {
   const [localOrder, setLocalOrder] = useState<ClienteLista[]>(clientes);
   const [dragging, setDragging] = useState<{ id: string; fromIndex: number } | null>(null);
   const [insertIndex, setInsertIndex] = useState(-1);
@@ -155,10 +159,10 @@ function ListaCategoria({ categoria, clientes, onReordered, onQuitar }: ListaCat
     onReordered(newOrder);
 
     setGuardando(true);
-    guardarOrdenCategoria(categoria, newOrder.map((c) => c.id))
+    guardarOrdenLista(listaId, newOrder.map((c) => c.id))
       .catch(() => Alert.alert('Error', 'No se pudo guardar el orden.'))
       .finally(() => setGuardando(false));
-  }, [categoria, onReordered]);
+  }, [listaId, onReordered]);
 
   const onDragCancel = useCallback(() => {
     if (!isDraggingRef.current && !draggingIdRef.current) return;
@@ -171,8 +175,8 @@ function ListaCategoria({ categoria, clientes, onReordered, onQuitar }: ListaCat
   if (localOrder.length === 0) {
     return (
       <View style={styles.listaVacia}>
-        <MaterialIcons name="playlist-add" size={32} color={CAT_COLOR[categoria]} style={{ opacity: 0.4 }} />
-        <Text style={[styles.listaVaciaTxt, { color: CAT_COLOR[categoria] }]}>
+        <MaterialIcons name="playlist-add" size={32} color={color} style={{ opacity: 0.4 }} />
+        <Text style={[styles.listaVaciaTxt, { color }]}>
           Lista vacía. Tocá "Agregar" para añadir clientes o talleres.
         </Text>
       </View>
@@ -180,13 +184,11 @@ function ListaCategoria({ categoria, clientes, onReordered, onQuitar }: ListaCat
   }
 
   return (
-    <View
-      onLayout={(e) => { containerY.current = e.nativeEvent.layout.y; }}
-    >
+    <View onLayout={(e) => { containerY.current = e.nativeEvent.layout.y; }}>
       {guardando && (
         <View style={styles.guardandoBanner}>
-          <ActivityIndicator size="small" color={CAT_COLOR[categoria]} />
-          <Text style={[styles.guardandoTxt, { color: CAT_COLOR[categoria] }]}>Guardando orden…</Text>
+          <ActivityIndicator size="small" color={color} />
+          <Text style={[styles.guardandoTxt, { color }]}>Guardando orden…</Text>
         </View>
       )}
 
@@ -200,7 +202,7 @@ function ListaCategoria({ categoria, clientes, onReordered, onQuitar }: ListaCat
               itemHsRef.current[c.id] = e.nativeEvent.layout.height;
             }}
           >
-            {dragging && insertIndex === idx && <View style={[styles.insertLine, { backgroundColor: CAT_COLOR[categoria] }]} />}
+            {dragging && insertIndex === idx && <View style={[styles.insertLine, { backgroundColor: color }]} />}
             <View style={[styles.clienteRow, esDragging && styles.clienteRowDragging]}>
               <DragHandle
                 itemId={c.id}
@@ -211,7 +213,7 @@ function ListaCategoria({ categoria, clientes, onReordered, onQuitar }: ListaCat
                 onCancel={onDragCancel}
               />
               <View style={styles.clienteOrden}>
-                <Text style={[styles.clienteOrdenTxt, { color: CAT_COLOR[categoria] }]}>{idx + 1}</Text>
+                <Text style={[styles.clienteOrdenTxt, { color }]}>{idx + 1}</Text>
               </View>
               <View style={styles.clienteInfo}>
                 <View style={styles.clienteTopRow}>
@@ -222,11 +224,7 @@ function ListaCategoria({ categoria, clientes, onReordered, onQuitar }: ListaCat
                 </View>
                 <Text style={styles.clienteDir} numberOfLines={1}>{c.direccion}</Text>
               </View>
-              <Pressable
-                onPress={() => onQuitar(c.id, c.nombre)}
-                hitSlop={8}
-                style={styles.trashBtn}
-              >
+              <Pressable onPress={() => onQuitar(c.id, c.nombre)} hitSlop={8} style={styles.trashBtn}>
                 <MaterialIcons name="remove-circle-outline" size={22} color="#e57373" />
               </Pressable>
             </View>
@@ -234,8 +232,31 @@ function ListaCategoria({ categoria, clientes, onReordered, onQuitar }: ListaCat
         );
       })}
       {dragging && insertIndex >= localOrder.length && (
-        <View style={[styles.insertLine, { backgroundColor: CAT_COLOR[categoria] }]} />
+        <View style={[styles.insertLine, { backgroundColor: color }]} />
       )}
+    </View>
+  );
+}
+
+// ─── Selector de días de la semana ────────────────────────────────────────────
+function SelectorDias({ seleccionados, onChange, color }: { seleccionados: number[]; onChange: (dias: number[]) => void; color: string }) {
+  return (
+    <View style={styles.diasRow}>
+      {DIAS_ORDEN.map((d) => {
+        const activo = seleccionados.includes(d);
+        return (
+          <Pressable
+            key={d}
+            style={[styles.diaChip, activo && { backgroundColor: color, borderColor: color }]}
+            onPress={() => {
+              const next = activo ? seleccionados.filter((x) => x !== d) : [...seleccionados, d];
+              onChange(next);
+            }}
+          >
+            <Text style={[styles.diaChipTxt, activo && { color: '#fff' }]}>{DIAS_SEMANA_CORTO[d]}</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -247,55 +268,45 @@ interface ClienteApi {
   direccion: string;
   tipo: 'cliente' | 'taller';
   telefono: string;
-  categorias: CategoriaLista[];
+  categorias: string[];
 }
 
 export default function Planificacion() {
-  const [tabActivo, setTabActivo] = useState<CategoriaLista>('A');
-  const [listas, setListas] = useState<Record<CategoriaLista, ClienteLista[]>>({
-    A: [], B: [], C: [], D: [], E: [],
-  });
+  const [listas, setListas] = useState<Lista[]>([]);
+  const [listaActivaId, setListaActivaId] = useState<string | null>(null);
+  const [clientesLista, setClientesLista] = useState<ClienteLista[]>([]);
   const [loading, setLoading] = useState(true);
+  const [cargandoClientes, setCargandoClientes] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const [modalAgregar, setModalAgregar] = useState(false);
   const [todosClientes, setTodosClientes] = useState<ClienteApi[]>([]);
   const [cargandoCatalogo, setCargandoCatalogo] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [agregando, setAgregando] = useState(false);
-  const [asignacionesCat, setAsignacionesCat] = useState<
-    Partial<Record<CategoriaLista, { id: string; nombre: string }>>
-  >({});
-  const [repartidoresCat, setRepartidoresCat] = useState<{ id: string; nombre: string }[]>([]);
+
+  const [repartidoresDisp, setRepartidoresDisp] = useState<{ id: string; nombre: string }[]>([]);
   const [modalRepVisible, setModalRepVisible] = useState(false);
   const [guardandoRep, setGuardandoRep] = useState(false);
 
-  const cargarTab = useCallback(async (cat: CategoriaLista) => {
-    try {
-      const lista = await obtenerListaCategoria(cat);
-      setListas((prev) => ({ ...prev, [cat]: lista }));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al cargar.');
-    }
-  }, []);
+  // Crear / editar lista
+  const [modalListaVisible, setModalListaVisible] = useState(false);
+  const [editandoListaId, setEditandoListaId] = useState<string | null>(null);
+  const [nombreForm, setNombreForm] = useState('');
+  const [diasForm, setDiasForm] = useState<number[]>([]);
+  const [guardandoLista, setGuardandoLista] = useState(false);
 
-  const cargarTodo = useCallback(async () => {
+  const listaActiva = listas.find((l) => l.id === listaActivaId) ?? null;
+  const idxActiva = listas.findIndex((l) => l.id === listaActivaId);
+  const paletaActiva = colorDeLista(idxActiva < 0 ? 0 : idxActiva);
+
+  const cargarListas = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [listA, listB, listC, listD, listE, asigs] = await Promise.all([
-        obtenerListaCategoria('A'),
-        obtenerListaCategoria('B'),
-        obtenerListaCategoria('C'),
-        obtenerListaCategoria('D'),
-        obtenerListaCategoria('E'),
-        obtenerAsignacionesListaCat(),
-      ]);
-      setListas({ A: listA, B: listB, C: listC, D: listD, E: listE });
-      const map: Partial<Record<CategoriaLista, { id: string; nombre: string }>> = {};
-      for (const asig of asigs) {
-        map[asig.categoria] = { id: asig.repartidorId, nombre: asig.repartidorNombre };
-      }
-      setAsignacionesCat(map);
+      const data = await obtenerListas();
+      setListas(data);
+      setListaActivaId((prev) => prev ?? data[0]?.id ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cargar.');
     } finally {
@@ -303,7 +314,21 @@ export default function Planificacion() {
     }
   }, []);
 
-  useEffect(() => { void cargarTodo(); }, [cargarTodo]);
+  const cargarClientesDeListaActiva = useCallback(async () => {
+    if (!listaActivaId) { setClientesLista([]); return; }
+    setCargandoClientes(true);
+    try {
+      const data = await obtenerClientesDeLista(listaActivaId);
+      setClientesLista(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cargar.');
+    } finally {
+      setCargandoClientes(false);
+    }
+  }, [listaActivaId]);
+
+  useEffect(() => { void cargarListas(); }, [cargarListas]);
+  useEffect(() => { void cargarClientesDeListaActiva(); }, [cargarClientesDeListaActiva]);
 
   const abrirAgregar = async () => {
     setBusqueda('');
@@ -323,16 +348,17 @@ export default function Planificacion() {
   };
 
   const confirmarAgregar = async (clienteId: string, nombre: string) => {
-    const listaActual = listas[tabActivo];
-    if (listaActual.some((c) => c.id === clienteId)) {
-      Alert.alert('Ya está en la lista', `${nombre} ya pertenece a la lista ${tabActivo}.`);
+    if (!listaActivaId) return;
+    if (clientesLista.some((c) => c.id === clienteId)) {
+      Alert.alert('Ya está en la lista', `${nombre} ya pertenece a esta lista.`);
       return;
     }
     setAgregando(true);
     try {
-      await agregarClienteACategoria(tabActivo, clienteId);
+      await agregarClienteALista(listaActivaId, clienteId);
       setModalAgregar(false);
-      await cargarTab(tabActivo);
+      await cargarClientesDeListaActiva();
+      setListas((prev) => prev.map((l) => l.id === listaActivaId ? { ...l, cantidadClientes: l.cantidadClientes + 1 } : l));
     } catch {
       Alert.alert('Error', 'No se pudo agregar el cliente.');
     } finally {
@@ -340,45 +366,11 @@ export default function Planificacion() {
     }
   };
 
-  const abrirSelectorRepartidor = async () => {
-    if (repartidoresCat.length === 0) {
-      try {
-        const data = await apiRequest<{ repartidores: { id: string; nombre: string }[] }>('/repartidores');
-        setRepartidoresCat(data.repartidores);
-      } catch {
-        Alert.alert('Error', 'No se pudo cargar los repartidores.');
-        return;
-      }
-    }
-    setModalRepVisible(true);
-  };
-
-  const seleccionarRepartidor = async (rep: { id: string; nombre: string } | null) => {
-    setModalRepVisible(false);
-    setGuardandoRep(true);
-    try {
-      if (rep) {
-        await guardarAsignacionListaCat(tabActivo, rep.id);
-        setAsignacionesCat((prev) => ({ ...prev, [tabActivo]: rep }));
-      } else {
-        await quitarAsignacionListaCat(tabActivo);
-        setAsignacionesCat((prev) => {
-          const next = { ...prev };
-          delete next[tabActivo];
-          return next;
-        });
-      }
-    } catch {
-      Alert.alert('Error', 'No se pudo guardar la asignación.');
-    } finally {
-      setGuardandoRep(false);
-    }
-  };
-
   const confirmarQuitar = (clienteId: string, nombre: string) => {
+    if (!listaActivaId) return;
     Alert.alert(
-      `Quitar de lista ${tabActivo}`,
-      `¿Quitar a ${nombre} de la lista ${tabActivo}?`,
+      'Quitar de la lista',
+      `¿Quitar a ${nombre} de "${listaActiva?.nombre}"?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -386,8 +378,9 @@ export default function Planificacion() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await quitarClienteDeCategoria(tabActivo, clienteId);
-              await cargarTab(tabActivo);
+              await quitarClienteDeLista(listaActivaId, clienteId);
+              await cargarClientesDeListaActiva();
+              setListas((prev) => prev.map((l) => l.id === listaActivaId ? { ...l, cantidadClientes: Math.max(0, l.cantidadClientes - 1) } : l));
             } catch {
               Alert.alert('Error', 'No se pudo quitar el cliente.');
             }
@@ -397,133 +390,234 @@ export default function Planificacion() {
     );
   };
 
-  // Clientes del catálogo que NO están ya en la lista activa
-  const idsEnLista = new Set(listas[tabActivo].map((c) => c.id));
+  const abrirSelectorRepartidor = async () => {
+    if (repartidoresDisp.length === 0) {
+      try {
+        const data = await apiRequest<{ repartidores: { id: string; nombre: string }[] }>('/repartidores');
+        setRepartidoresDisp(data.repartidores);
+      } catch {
+        Alert.alert('Error', 'No se pudo cargar los repartidores.');
+        return;
+      }
+    }
+    setModalRepVisible(true);
+  };
+
+  const seleccionarRepartidor = async (rep: { id: string; nombre: string } | null) => {
+    if (!listaActivaId) return;
+    setModalRepVisible(false);
+    setGuardandoRep(true);
+    try {
+      if (rep) {
+        await asignarRepartidorALista(listaActivaId, rep.id);
+      } else {
+        await quitarAsignacionDeLista(listaActivaId);
+      }
+      setListas((prev) => prev.map((l) => l.id === listaActivaId ? { ...l, repartidor: rep } : l));
+    } catch {
+      Alert.alert('Error', 'No se pudo guardar la asignación.');
+    } finally {
+      setGuardandoRep(false);
+    }
+  };
+
+  // ── Crear / editar lista ──
+  const abrirCrearLista = () => {
+    setEditandoListaId(null);
+    setNombreForm('');
+    setDiasForm([]);
+    setModalListaVisible(true);
+  };
+
+  const abrirEditarLista = () => {
+    if (!listaActiva) return;
+    setEditandoListaId(listaActiva.id);
+    setNombreForm(listaActiva.nombre);
+    setDiasForm(listaActiva.diasSemana);
+    setModalListaVisible(true);
+  };
+
+  const guardarLista = async () => {
+    if (!nombreForm.trim()) {
+      Alert.alert('Falta el nombre', 'Ponele un nombre a la lista.');
+      return;
+    }
+    setGuardandoLista(true);
+    try {
+      if (editandoListaId) {
+        await editarLista(editandoListaId, { nombre: nombreForm.trim(), diasSemana: diasForm });
+        setListas((prev) => prev.map((l) => l.id === editandoListaId ? { ...l, nombre: nombreForm.trim(), diasSemana: diasForm } : l));
+      } else {
+        const nueva = await crearLista(nombreForm.trim(), diasForm);
+        setListas((prev) => [...prev, nueva]);
+        setListaActivaId(nueva.id);
+      }
+      setModalListaVisible(false);
+    } catch {
+      Alert.alert('Error', 'No se pudo guardar la lista.');
+    } finally {
+      setGuardandoLista(false);
+    }
+  };
+
+  const confirmarEliminarLista = () => {
+    if (!listaActiva) return;
+    Alert.alert(
+      'Eliminar lista',
+      `¿Eliminar "${listaActiva.nombre}"? Se perderá el orden de clientes y la asignación al repartidor. Esto no borra a los clientes.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await eliminarLista(listaActiva.id);
+              setListas((prev) => {
+                const restantes = prev.filter((l) => l.id !== listaActiva.id);
+                setListaActivaId(restantes[0]?.id ?? null);
+                return restantes;
+              });
+            } catch {
+              Alert.alert('Error', 'No se pudo eliminar la lista.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const idsEnLista = new Set(clientesLista.map((c) => c.id));
   const catalogoFiltrado = todosClientes.filter((c) => {
     if (idsEnLista.has(c.id)) return false;
     const q = busqueda.toLowerCase();
-    return (
-      c.nombre.toLowerCase().includes(q) ||
-      c.direccion.toLowerCase().includes(q)
-    );
+    return c.nombre.toLowerCase().includes(q) || c.direccion.toLowerCase().includes(q);
   });
 
-  const listaActual = listas[tabActivo];
-
   return (
-    <Screen title="Planificación" subtitle="Armado de listas por categoría" scrollable>
+    <Screen title="Planificación" subtitle="Listas de reparto y su asignación automática" scrollable>
 
-      {/* Tabs A / B / C / D */}
+      {/* Tabs de listas */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
         style={styles.tabScroll} contentContainerStyle={styles.tabContent}>
-        {CATS.map((cat) => {
-          const activo = tabActivo === cat;
+        {listas.map((l, idx) => {
+          const activo = listaActivaId === l.id;
+          const pal = colorDeLista(idx);
           return (
             <Pressable
-              key={cat}
-              onPress={() => setTabActivo(cat)}
-              style={[
-                styles.tabChip,
-                activo && { borderColor: CAT_COLOR[cat], backgroundColor: CAT_BG[cat] },
-              ]}
+              key={l.id}
+              onPress={() => setListaActivaId(l.id)}
+              style={[styles.tabChip, activo && { borderColor: pal.color, backgroundColor: pal.bg }]}
             >
-              <Text style={[styles.tabChipLetra, activo && { color: CAT_COLOR[cat] }]}>
-                {cat}
+              <Text style={[styles.tabChipNombre, activo && { color: pal.color }]} numberOfLines={1}>
+                {l.nombre}
               </Text>
-              <Text style={[styles.tabChipCant, activo && { color: CAT_COLOR[cat] }]}>
-                {listas[cat].length} paradas
+              <Text style={[styles.tabChipCant, activo && { color: pal.color }]}>
+                {l.cantidadClientes} paradas
               </Text>
             </Pressable>
           );
         })}
+        <Pressable onPress={abrirCrearLista} style={styles.tabChipNueva}>
+          <MaterialIcons name="add" size={20} color={COLORS.verdeOscuro} />
+          <Text style={styles.tabChipNuevaTxt}>Nueva lista</Text>
+        </Pressable>
       </ScrollView>
-
-      {/* Cabecera del tab activo */}
-      <View style={[styles.catHeader, { backgroundColor: CAT_BG[tabActivo], borderColor: CAT_BORDER[tabActivo] }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.catHeaderTit, { color: CAT_COLOR[tabActivo] }]}>
-            {CAT_LABEL[tabActivo]}
-          </Text>
-          <Text style={styles.catHeaderSub}>
-            {listaActual.length} cliente{listaActual.length !== 1 ? 's' : ''} / taller{listaActual.length !== 1 ? 'es' : ''}
-          </Text>
-        </View>
-        <Button
-          label="Agregar"
-          variant="primary"
-          loading={cargandoCatalogo}
-          onPress={() => void abrirAgregar()}
-          iconLeft={<MaterialIcons name="add" size={16} color="#fff" />}
-        />
-      </View>
-
-      {/* Repartidor asignado automáticamente a esta lista */}
-      <Pressable
-        style={[styles.repRow, { borderColor: CAT_BORDER[tabActivo] }]}
-        onPress={() => void abrirSelectorRepartidor()}
-        disabled={guardandoRep}
-      >
-        <MaterialIcons name="person" size={20} color={CAT_COLOR[tabActivo]} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.repLabel}>Repartidor asignado automáticamente</Text>
-          <Text style={[styles.repValor, { color: CAT_COLOR[tabActivo] }]}>
-            {guardandoRep
-              ? 'Guardando…'
-              : asignacionesCat[tabActivo]?.nombre ?? 'Sin asignar — tocar para configurar'}
-          </Text>
-        </View>
-        <MaterialIcons name="chevron-right" size={20} color={CAT_COLOR[tabActivo]} />
-      </Pressable>
 
       {loading ? (
         <ActivityIndicator color={COLORS.verdeOscuro} style={{ marginTop: 32 }} />
       ) : error ? (
         <View style={styles.errorBox}>
           <Text style={styles.errorTxt}>{error}</Text>
-          <Button label="REINTENTAR" variant="secondary" onPress={() => void cargarTodo()} />
+          <Button label="REINTENTAR" variant="secondary" onPress={() => void cargarListas()} />
+        </View>
+      ) : !listaActiva ? (
+        <View style={styles.listaVacia}>
+          <MaterialIcons name="playlist-add" size={32} color={COLORS.grisSecundario} style={{ opacity: 0.4 }} />
+          <Text style={styles.listaVaciaTxt}>Todavía no hay listas. Creá la primera con "Nueva lista".</Text>
         </View>
       ) : (
-        <View style={styles.listaContainer}>
-          <ListaCategoria
-            categoria={tabActivo}
-            clientes={listaActual}
-            onReordered={(nueva) => setListas((prev) => ({ ...prev, [tabActivo]: nueva }))}
-            onQuitar={confirmarQuitar}
-          />
-        </View>
+        <>
+          {/* Cabecera de la lista activa */}
+          <View style={[styles.catHeader, { backgroundColor: paletaActiva.bg, borderColor: paletaActiva.border }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.catHeaderTit, { color: paletaActiva.color }]}>{listaActiva.nombre}</Text>
+              <Text style={styles.catHeaderSub}>
+                {resumenDias(listaActiva.diasSemana)} · {clientesLista.length} cliente{clientesLista.length !== 1 ? 's' : ''} / taller{clientesLista.length !== 1 ? 'es' : ''}
+              </Text>
+            </View>
+            <Pressable onPress={abrirEditarLista} hitSlop={8} style={styles.iconBtn}>
+              <MaterialIcons name="edit" size={20} color={paletaActiva.color} />
+            </Pressable>
+            <Pressable onPress={confirmarEliminarLista} hitSlop={8} style={styles.iconBtn}>
+              <MaterialIcons name="delete-outline" size={20} color="#e57373" />
+            </Pressable>
+            <Button
+              label="Agregar"
+              variant="primary"
+              loading={cargandoCatalogo}
+              onPress={() => void abrirAgregar()}
+              iconLeft={<MaterialIcons name="add" size={16} color="#fff" />}
+            />
+          </View>
+
+          {/* Repartidor asignado automáticamente a esta lista */}
+          <Pressable
+            style={[styles.repRow, { borderColor: paletaActiva.border }]}
+            onPress={() => void abrirSelectorRepartidor()}
+            disabled={guardandoRep}
+          >
+            <MaterialIcons name="person" size={20} color={paletaActiva.color} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.repLabel}>Repartidor asignado automáticamente</Text>
+              <Text style={[styles.repValor, { color: paletaActiva.color }]}>
+                {guardandoRep ? 'Guardando…' : listaActiva.repartidor?.nombre ?? 'Sin asignar — tocar para configurar'}
+              </Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={20} color={paletaActiva.color} />
+          </Pressable>
+
+          {cargandoClientes ? (
+            <ActivityIndicator color={COLORS.verdeOscuro} style={{ marginTop: 16 }} />
+          ) : (
+            <View style={styles.listaContainer}>
+              <ListaClientes
+                listaId={listaActiva.id}
+                color={paletaActiva.color}
+                clientes={clientesLista}
+                onReordered={setClientesLista}
+                onQuitar={confirmarQuitar}
+              />
+            </View>
+          )}
+        </>
       )}
 
       {/* Modal para seleccionar repartidor */}
       <Modal visible={modalRepVisible} animationType="fade" transparent>
         <View style={styles.repModalOverlay}>
           <View style={styles.repModalBox}>
-            <Text style={[styles.repModalTit, { color: CAT_COLOR[tabActivo] }]}>
-              Lista {tabActivo} — ¿quién la hace?
+            <Text style={[styles.repModalTit, { color: paletaActiva.color }]}>
+              {listaActiva?.nombre} — ¿quién la hace?
             </Text>
-            {repartidoresCat.map((rep) => (
+            {repartidoresDisp.map((rep) => (
               <Pressable
                 key={rep.id}
                 style={[
                   styles.repModalItem,
-                  asignacionesCat[tabActivo]?.id === rep.id && {
-                    backgroundColor: CAT_BG[tabActivo],
-                    borderColor: CAT_COLOR[tabActivo],
-                  },
+                  listaActiva?.repartidor?.id === rep.id && { backgroundColor: paletaActiva.bg, borderColor: paletaActiva.color },
                 ]}
                 onPress={() => void seleccionarRepartidor(rep)}
               >
-                <MaterialIcons name="person" size={18} color={CAT_COLOR[tabActivo]} />
+                <MaterialIcons name="person" size={18} color={paletaActiva.color} />
                 <Text style={styles.repModalItemTxt}>{rep.nombre}</Text>
-                {asignacionesCat[tabActivo]?.id === rep.id && (
-                  <MaterialIcons name="check-circle" size={18} color={CAT_COLOR[tabActivo]} />
+                {listaActiva?.repartidor?.id === rep.id && (
+                  <MaterialIcons name="check-circle" size={18} color={paletaActiva.color} />
                 )}
               </Pressable>
             ))}
-            {asignacionesCat[tabActivo] && (
-              <Pressable
-                style={[styles.repModalItem, { borderColor: '#e57373' }]}
-                onPress={() => void seleccionarRepartidor(null)}
-              >
+            {listaActiva?.repartidor && (
+              <Pressable style={[styles.repModalItem, { borderColor: '#e57373' }]} onPress={() => void seleccionarRepartidor(null)}>
                 <MaterialIcons name="person-off" size={18} color="#e57373" />
                 <Text style={[styles.repModalItemTxt, { color: '#e57373' }]}>Sin asignar</Text>
               </Pressable>
@@ -535,12 +629,42 @@ export default function Planificacion() {
         </View>
       </Modal>
 
+      {/* Modal crear/editar lista */}
+      <Modal visible={modalListaVisible} animationType="fade" transparent>
+        <View style={styles.repModalOverlay}>
+          <View style={styles.repModalBox}>
+            <Text style={styles.repModalTit}>{editandoListaId ? 'Editar lista' : 'Nueva lista'}</Text>
+            <Text style={styles.formLabel}>Nombre</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="Ej: Zona Norte, Andrés, Talleres VIP…"
+              value={nombreForm}
+              onChangeText={setNombreForm}
+              autoFocus
+            />
+            <Text style={styles.formLabel}>¿Qué día se hace?</Text>
+            <SelectorDias seleccionados={diasForm} onChange={setDiasForm} color={COLORS.verdeOscuro} />
+            <Text style={styles.formHint}>
+              Podés elegir más de un día (ej: Lunes y Miércoles). Sin días marcados, la lista no se asigna sola — solo se aplica a mano.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+              <View style={{ flex: 1 }}>
+                <Button label="Cancelar" variant="secondary" onPress={() => setModalListaVisible(false)} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button label={guardandoLista ? 'Guardando…' : 'Guardar'} variant="primary" loading={guardandoLista} onPress={() => void guardarLista()} />
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Modal para agregar cliente */}
       <Modal visible={modalAgregar} animationType="slide" presentationStyle="pageSheet">
         <View style={styles.modal}>
           <View style={styles.modalHeader}>
-            <Text style={[styles.modalTit, { color: CAT_COLOR[tabActivo] }]}>
-              Agregar a lista {tabActivo}
+            <Text style={[styles.modalTit, { color: paletaActiva.color }]}>
+              Agregar a "{listaActiva?.nombre}"
             </Text>
             <Pressable onPress={() => setModalAgregar(false)} hitSlop={12}>
               <MaterialIcons name="close" size={24} color={COLORS.grisTexto} />
@@ -585,7 +709,7 @@ export default function Planificacion() {
                 <View style={[styles.tipoBadge, item.tipo === 'taller' ? styles.tipoBadgeTaller : styles.tipoBadgeCliente]}>
                   <Text style={styles.tipoBadgeTxt}>{item.tipo === 'taller' ? 'Taller' : 'Cliente'}</Text>
                 </View>
-                <MaterialIcons name="add-circle-outline" size={22} color={CAT_COLOR[tabActivo]} />
+                <MaterialIcons name="add-circle-outline" size={22} color={paletaActiva.color} />
               </Pressable>
             )}
           />
@@ -600,17 +724,33 @@ const styles = StyleSheet.create({
   tabScroll: { marginBottom: 12 },
   tabContent: { gap: 10, paddingVertical: 4 },
   tabChip: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 14,
     borderWidth: 2,
     borderColor: '#dde2e8',
     backgroundColor: '#fff',
     alignItems: 'center',
-    minWidth: 80,
+    minWidth: 100,
+    maxWidth: 160,
   },
-  tabChipLetra: { fontFamily: 'Poppins_700Bold', fontSize: 22, color: COLORS.grisTexto },
+  tabChipNombre: { fontFamily: 'Poppins_700Bold', fontSize: 13, color: COLORS.grisTexto },
   tabChipCant: { fontFamily: 'Poppins_400Regular', fontSize: 10, color: COLORS.grisSecundario, marginTop: 1 },
+  tabChipNueva: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#b7e0a0',
+    borderStyle: 'dashed',
+    backgroundColor: '#f6fff8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 4,
+    minWidth: 100,
+  },
+  tabChipNuevaTxt: { fontFamily: 'Poppins_600SemiBold', fontSize: 12, color: COLORS.verdeOscuro },
 
   catHeader: {
     flexDirection: 'row',
@@ -619,15 +759,16 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     padding: 14,
     marginBottom: 12,
-    gap: 12,
+    gap: 10,
   },
   catHeaderTit: { fontFamily: 'Poppins_700Bold', fontSize: 16 },
   catHeaderSub: { fontFamily: 'Poppins_400Regular', fontSize: 12, color: COLORS.grisSecundario, marginTop: 2 },
+  iconBtn: { padding: 6 },
 
   listaContainer: { borderRadius: 14, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e8ecef', overflow: 'hidden' },
 
   listaVacia: { padding: 32, alignItems: 'center', gap: 10 },
-  listaVaciaTxt: { fontFamily: 'Poppins_400Regular', fontSize: 14, textAlign: 'center', opacity: 0.7 },
+  listaVaciaTxt: { fontFamily: 'Poppins_400Regular', fontSize: 14, textAlign: 'center', opacity: 0.7, color: COLORS.grisSecundario },
 
   guardandoBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, paddingHorizontal: 14 },
   guardandoTxt: { fontFamily: 'Poppins_400Regular', fontSize: 12 },
@@ -660,7 +801,7 @@ const styles = StyleSheet.create({
 
   repModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 },
   repModalBox: { backgroundColor: '#fff', borderRadius: 18, padding: 20, gap: 10 },
-  repModalTit: { fontFamily: 'Poppins_700Bold', fontSize: 16, marginBottom: 4 },
+  repModalTit: { fontFamily: 'Poppins_700Bold', fontSize: 16, marginBottom: 4, color: COLORS.grisTexto },
   repModalItem: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     borderRadius: 12, borderWidth: 1.5, borderColor: '#e0e5ea',
@@ -669,6 +810,19 @@ const styles = StyleSheet.create({
   repModalItemTxt: { fontFamily: 'Poppins_600SemiBold', fontSize: 14, color: '#333', flex: 1 },
   repModalCancelar: { marginTop: 4, alignItems: 'center', padding: 12 },
   repModalCancelarTxt: { fontFamily: 'Poppins_600SemiBold', fontSize: 14, color: '#888' },
+
+  formLabel: { fontFamily: 'Poppins_600SemiBold', fontSize: 13, color: COLORS.grisTexto, marginTop: 4 },
+  formInput: {
+    borderWidth: 1, borderColor: '#dde3e8', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10, fontFamily: 'Poppins_400Regular', fontSize: 14, color: COLORS.grisTexto,
+  },
+  formHint: { fontFamily: 'Poppins_400Regular', fontSize: 11, color: COLORS.grisSecundario, lineHeight: 16 },
+  diasRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  diaChip: {
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
+    borderWidth: 1.5, borderColor: '#dde3e8', backgroundColor: '#fff',
+  },
+  diaChipTxt: { fontFamily: 'Poppins_600SemiBold', fontSize: 12, color: COLORS.grisTexto },
 
   errorBox: { backgroundColor: '#fff3f3', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#e06a6a', gap: 8 },
   errorTxt: { fontFamily: 'Poppins_400Regular', color: '#c0392b' },

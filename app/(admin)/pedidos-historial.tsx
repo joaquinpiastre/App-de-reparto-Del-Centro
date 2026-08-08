@@ -5,7 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Screen } from '@/components/ui/Screen';
 import { Button } from '@/components/ui/Button';
 import { COLORS } from '@/constants/colors';
-import { actualizarEstadoPedidoCalle, obtenerTodosLosPedidosCalle } from '@/services/pedidosCalle';
+import { actualizarEstadoPedidoCalle, eliminarPedidoCalle, obtenerTodosLosPedidosCalle } from '@/services/pedidosCalle';
 import { formatFechaHora } from '@/lib/fechaHora';
 import type { EstadoPedidoCalle, PedidoCalle } from '@/types';
 
@@ -61,6 +61,7 @@ export default function PedidosHistorial() {
   const [filtroEstado, setFiltroEstado] = useState<EstadoPedidoCalle | 'todos'>('todos');
   const [busqueda, setBusqueda] = useState('');
   const [cambiandoId, setCambiandoId] = useState<string | null>(null);
+  const [eliminandoId, setEliminandoId] = useState<string | null>(null);
 
   const cambiarEstado = async (pedido: PedidoCalle, estado: EstadoPedidoCalle) => {
     if (estado === pedido.estado || cambiandoId) return;
@@ -73,6 +74,34 @@ export default function PedidosHistorial() {
     } finally {
       setCambiandoId(null);
     }
+  };
+
+  const eliminarPedido = (pedido: PedidoCalle) => {
+    const confirmar = async () => {
+      try {
+        setEliminandoId(pedido.id);
+        await eliminarPedidoCalle(pedido.id);
+        setTodos((prev) => prev.filter((p) => p.id !== pedido.id));
+      } catch (e) {
+        avisar(e instanceof Error ? e.message : 'No se pudo eliminar el pedido.');
+      } finally {
+        setEliminandoId(null);
+      }
+    };
+    if (Platform.OS === 'web') {
+      if (globalThis.confirm?.(`¿Eliminar el pedido de ${pedido.calleMostrada}? Esta acción no se puede deshacer.`)) {
+        void confirmar();
+      }
+      return;
+    }
+    Alert.alert(
+      'Eliminar pedido',
+      `¿Eliminar el pedido de ${pedido.calleMostrada}? Esta acción no se puede deshacer.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Eliminar', style: 'destructive', onPress: () => void confirmar() },
+      ]
+    );
   };
 
   const cargar = async () => {
@@ -177,10 +206,19 @@ export default function PedidosHistorial() {
                 <MaterialIcons name="person" size={13} color={COLORS.verdeOscuro} />
                 <Text style={styles.repTagTxt}>{p.repartidorNombre}</Text>
               </View>
-              <View style={[styles.estadoTag, { backgroundColor: `${ESTADO_COLOR[p.estado] ?? '#888'}22` }]}>
-                <Text style={[styles.estadoTxt, { color: ESTADO_COLOR[p.estado] ?? '#888' }]}>
-                  {p.estado.charAt(0).toUpperCase() + p.estado.slice(1)}
-                </Text>
+              <View style={styles.cardHeaderRight}>
+                <View style={[styles.estadoTag, { backgroundColor: `${ESTADO_COLOR[p.estado] ?? '#888'}22` }]}>
+                  <Text style={[styles.estadoTxt, { color: ESTADO_COLOR[p.estado] ?? '#888' }]}>
+                    {p.estado.charAt(0).toUpperCase() + p.estado.slice(1)}
+                  </Text>
+                </View>
+                <MaterialIcons
+                  name="delete-outline"
+                  size={20}
+                  color={eliminandoId === p.id ? '#ccc' : '#e57373'}
+                  onPress={() => { if (eliminandoId !== p.id) eliminarPedido(p); }}
+                  hitSlop={8}
+                />
               </View>
             </View>
 
@@ -328,6 +366,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  cardHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   repTag: {
     flexDirection: 'row',

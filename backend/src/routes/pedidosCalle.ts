@@ -219,6 +219,21 @@ pedidosCalleRouter.patch('/pedidos-calle/:id/estado', requireAuth, async (req, r
   res.json({ ok: true });
 });
 
+pedidosCalleRouter.delete('/pedidos-calle/:id', requireAuth, async (req, res) => {
+  const user = (req as ReqWithUser).user;
+  if (user?.rol !== 'admin' && user?.rol !== 'logistica') {
+    res.status(403).json({ error: 'No autorizado para eliminar pedidos.' });
+    return;
+  }
+  await pool.query(`delete from pedido_calle_items where pedido_id = $1`, [req.params.id]);
+  const del = await pool.query(`delete from pedidos_calle where id = $1`, [req.params.id]);
+  if (del.rowCount === 0) {
+    res.status(404).json({ error: 'Pedido no encontrado.' });
+    return;
+  }
+  res.json({ ok: true });
+});
+
 pedidosCalleRouter.patch('/pedidos-calle/:id/nota', requireAuth, async (req, res) => {
   const parsed = notaSchema.safeParse(req.body);
   if (!parsed.success) {

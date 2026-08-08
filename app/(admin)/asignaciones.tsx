@@ -36,9 +36,10 @@ import {
   type ClienteRutaFija,
 } from '@/services/rutasFijas';
 import {
-  aplicarListaCategoria,
-  type CategoriaLista,
-} from '@/services/listasCategorias';
+  aplicarLista,
+  obtenerListas,
+  type Lista,
+} from '@/services/listas';
 import type { Asignacion, ClienteCatalogo, Usuario } from '@/types';
 
 const hoy = () => fechaHoyArgentina();
@@ -187,9 +188,11 @@ export default function Asignaciones() {
   const [guardandoRutaFija, setGuardandoRutaFija] = useState(false);
   const [generando, setGenerando] = useState(false);
 
-  // Aplicar lista de categoría
+  // Aplicar lista de reparto
   const [modalListaCatVisible, setModalListaCatVisible] = useState(false);
   const [aplicandoListaCat, setAplicandoListaCat] = useState(false);
+  const [listasDisponibles, setListasDisponibles] = useState<Lista[]>([]);
+  const [cargandoListas, setCargandoListas] = useState(false);
 
   // ── Drag-and-drop ──────────────────────────────────────────────────────────
   const [localOrder, setLocalOrder] = useState<Asignacion[]>([]);
@@ -349,18 +352,32 @@ export default function Asignaciones() {
     }
   };
 
-  const aplicarListaCat = async (cat: CategoriaLista) => {
+  const abrirModalListaCat = async () => {
+    setModalListaCatVisible(true);
+    if (listasDisponibles.length === 0) {
+      setCargandoListas(true);
+      try {
+        setListasDisponibles(await obtenerListas());
+      } catch {
+        Alert.alert('Error', 'No se pudieron cargar las listas.');
+      } finally {
+        setCargandoListas(false);
+      }
+    }
+  };
+
+  const aplicarListaCat = async (lista: Lista) => {
     if (!repSeleccionado) return;
     setAplicandoListaCat(true);
     try {
-      const result = await aplicarListaCategoria(cat, repSeleccionado.id, fecha);
+      const result = await aplicarLista(lista.id, repSeleccionado.id, fecha);
       setModalListaCatVisible(false);
       await cargarAsignaciones();
       Alert.alert(
         'Lista aplicada',
         result.generados > 0
-          ? `${result.generados} asignación(es) generadas desde la lista ${cat}.${result.omitidos > 0 ? ` (${result.omitidos} ya existían)` : ''}`
-          : `Todas las visitas de la lista ${cat} ya estaban asignadas para este día.`
+          ? `${result.generados} asignación(es) generadas desde "${lista.nombre}".${result.omitidos > 0 ? ` (${result.omitidos} ya existían)` : ''}`
+          : `Todas las visitas de "${lista.nombre}" ya estaban asignadas para este día.`
       );
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo aplicar la lista.');
@@ -612,24 +629,24 @@ export default function Asignaciones() {
         </View>
       ) : null}
 
-      {/* Card: aplicar lista de categoría */}
+      {/* Card: aplicar lista de reparto */}
       {repSeleccionado ? (
         <Pressable
           style={styles.listaCardBtn}
-          onPress={() => setModalListaCatVisible(true)}
+          onPress={() => void abrirModalListaCat()}
         >
           <MaterialIcons name="list-alt" size={18} color="#1565C0" />
           <View style={{ flex: 1 }}>
-            <Text style={styles.listaCardTit}>Aplicar lista de categoría</Text>
+            <Text style={styles.listaCardTit}>Aplicar lista de reparto</Text>
             <Text style={styles.listaCardSub}>
-              Asignar la lista A, B, C o D a {repSeleccionado.nombre} para el {formatFecha(fecha)}
+              Asignar una lista a {repSeleccionado.nombre} para el {formatFecha(fecha)}
             </Text>
           </View>
           <MaterialIcons name="chevron-right" size={20} color="#1565C0" />
         </Pressable>
       ) : null}
 
-      {/* Modal selector de categoría */}
+      {/* Modal selector de lista */}
       <Modal visible={modalListaCatVisible} transparent animationType="fade">
         <View style={styles.modalListaCatOverlay}>
           <View style={styles.modalListaCatBox}>
@@ -639,25 +656,29 @@ export default function Asignaciones() {
               <Text style={{ fontFamily: 'Poppins_700Bold' }}>{repSeleccionado?.nombre}</Text>
               {' '}para el {formatFecha(fecha)}.
             </Text>
-            {(['A', 'B', 'C', 'D', 'E'] as CategoriaLista[]).map((cat) => {
-              const colores: Record<CategoriaLista, string> = { A: '#2E7D32', B: '#1565C0', C: '#E65100', D: '#7B1FA2', E: '#AD1457' };
-              const bgs: Record<CategoriaLista, string> = { A: '#e8f5e9', B: '#e3f2fd', C: '#fff3e0', D: '#f3e5f5', E: '#fce4ec' };
-              const labels: Record<CategoriaLista, string> = { A: 'Lista A · Lun/Mié', B: 'Lista B · Mar/Jue', C: 'Lista C · Vie', D: 'Lista D · Andrés', E: 'Lista E · Sábado' };
-              return (
-                <Pressable
-                  key={cat}
-                  style={[styles.modalListaCatOpcion, { backgroundColor: bgs[cat], borderColor: colores[cat] }]}
-                  onPress={() => void aplicarListaCat(cat)}
-                  disabled={aplicandoListaCat}
-                >
-                  <View style={[styles.modalListaCatLetra, { backgroundColor: colores[cat] }]}>
-                    <Text style={styles.modalListaCatLetraTxt}>{cat}</Text>
-                  </View>
-                  <Text style={[styles.modalListaCatLabel, { color: colores[cat] }]}>{labels[cat]}</Text>
-                  {aplicandoListaCat && <ActivityIndicator size="small" color={colores[cat]} />}
-                </Pressable>
-              );
-            })}
+            {cargandoListas && <ActivityIndicator color="#1565C0" style={{ marginVertical: 8 }} />}
+            {!cargandoListas && listasDisponibles.length === 0 && (
+              <Text style={styles.modalListaCatSub}>
+                Todavía no hay listas creadas. Armalas desde "Planificación".
+              </Text>
+            )}
+            {listasDisponibles.map((lista) => (
+              <Pressable
+                key={lista.id}
+                style={[styles.modalListaCatOpcion, { backgroundColor: '#e3f2fd', borderColor: '#1565C0' }]}
+                onPress={() => void aplicarListaCat(lista)}
+                disabled={aplicandoListaCat}
+              >
+                <View style={[styles.modalListaCatLetra, { backgroundColor: '#1565C0' }]}>
+                  <MaterialIcons name="list-alt" size={18} color="#fff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.modalListaCatLabel, { color: '#1565C0' }]}>{lista.nombre}</Text>
+                  <Text style={styles.modalListaCatSub}>{lista.cantidadClientes} clientes</Text>
+                </View>
+                {aplicandoListaCat && <ActivityIndicator size="small" color="#1565C0" />}
+              </Pressable>
+            ))}
             <Pressable
               style={styles.modalListaCatCancelar}
               onPress={() => setModalListaCatVisible(false)}

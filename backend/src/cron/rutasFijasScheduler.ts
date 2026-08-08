@@ -4,7 +4,8 @@
  * Cron interno (sin dependencias externas) que a las 00:00 Argentina (UTC-3)
  * aplica automáticamente asignaciones para el nuevo día.
  *
- * Sistema nuevo: usa listas_categoria + asignacion_lista_cat (qué repartidor hace cada lista).
+ * Sistema nuevo: usa listas + listas_clientes + listas_asignaciones — listas con nombre
+ * y días de la semana propios, cada una asignada a un repartidor de forma automática.
  * Sistema viejo: usa rutas_fijas por repartidor (fallback para los que no migraron).
  *
  * Argentina no usa horario de verano (siempre UTC-3).
@@ -12,7 +13,7 @@
  */
 
 import { pool } from '../db/client.js';
-import { ensureAsignacionListaCatTable } from '../routes/asignacionListaCat.js';
+import { ensureListasTables } from '../routes/listas.js';
 
 // ─── Helpers de fecha/hora ────────────────────────────────────────────────────
 
@@ -50,46 +51,45 @@ function categoriaDel(diaSemana: number): 'A' | 'B' | 'C' | 'D' | 'E' | null {
   return null;                                         // Domingo (sin visitas)
 }
 
-// ─── Sistema nuevo: listas_categoria + asignacion_lista_cat ─────────────────
+// ─── Sistema nuevo: listas + listas_clientes + listas_asignaciones ──────────
 
 async function aplicarNuevoSistema(
   fecha: string,
-  categoria: string,
-): Promise<{ repartidor: string; generados: number; omitidos: number }[]> {
-  const resultado: { repartidor: string; generados: number; omitidos: number }[] = [];
+  diaSemana: number,
+): Promise<{ repartidor: string; repartidorId: string; generados: number; omitidos: number }[]> {
+  const resultado: { repartidor: string; repartidorId: string; generados: number; omitidos: number }[] = [];
 
-  await ensureAsignacionListaCatTable();
+  await ensureListasTables();
 
-  // Buscar qué repartidor está asignado a esta categoría
-  const { rows: asignaciones } = await pool.query<{
-    repartidorId: string;
-    repartidorNombre: string;
+  // Listas activas que corresponden a este día de la semana, con su repartidor asignado
+  const { rows: listas } = await pool.query<{
+    listaId: string; nombre: string; repartidorId: string; repartidorNombre: string;
   }>(
-    `SELECT a.repartidor_id AS "repartidorId", r.nombre AS "repartidorNombre"
-     FROM asignacion_lista_cat a
-     JOIN repartidores r ON r.id = a.repartidor_id AND r.activo = true
-     WHERE a.categoria = $1`,
-    [categoria],
+    `SELECT l.id AS "listaId", l.nombre, la.repartidor_id AS "repartidorId", r.nombre AS "repartidorNombre"
+     FROM listas l
+     JOIN listas_asignaciones la ON la.lista_id = l.id
+     JOIN repartidores r ON r.id = la.repartidor_id AND r.activo = true
+     WHERE l.activa = true AND $1 = ANY(l.dias_semana)`,
+    [diaSemana],
   );
 
-  if (asignaciones.length === 0) return resultado;
+  if (listas.length === 0) return resultado;
 
-  // Clientes de la lista en orden
-  const { rows: listaRows } = await pool.query<{ cliente_id: string; orden: number }>(
-    `SELECT lc.cliente_id, lc.orden
-     FROM listas_categoria lc
-     JOIN clientes c ON c.id = lc.cliente_id AND c.activo = true
-     WHERE lc.categoria = $1
-     ORDER BY lc.orden ASC`,
-    [categoria],
-  );
+  for (const { listaId, nombre, repartidorId, repartidorNombre } of listas) {
+    const { rows: listaRows } = await pool.query<{ cliente_id: string; orden: number }>(
+      `SELECT lc.cliente_id, lc.orden
+       FROM listas_clientes lc
+       JOIN clientes c ON c.id = lc.cliente_id AND c.activo = true
+       WHERE lc.lista_id = $1
+       ORDER BY lc.orden ASC`,
+      [listaId],
+    );
 
-  if (listaRows.length === 0) {
-    console.log(`[Cron] Lista ${categoria} vacía — sin asignaciones del nuevo sistema.`);
-    return resultado;
-  }
+    if (listaRows.length === 0) {
+      console.log(`[Cron] Lista "${nombre}" vacía — sin asignaciones.`);
+      continue;
+    }
 
-  for (const { repartidorId, repartidorNombre } of asignaciones) {
     const { rows: yaRows } = await pool.query<{ cliente_id: string }>(
       `SELECT cliente_id FROM asignaciones WHERE repartidor_id = $1 AND fecha_programada = $2`,
       [repartidorId, fecha],
@@ -111,9 +111,9 @@ async function aplicarNuevoSistema(
       await new Promise<void>((r) => setTimeout(r, 1));
     }
 
-    resultado.push({ repartidor: repartidorNombre, generados, omitidos });
+    resultado.push({ repartidor: repartidorNombre, repartidorId, generados, omitidos });
     console.log(
-      `[Cron][LISTA] ${repartidorNombre} (${categoria}): ${generados} asignación(es), ${omitidos} ya existían — ${fecha}`,
+      `[Cron][LISTA] ${repartidorNombre} ("${nombre}"): ${generados} asignación(es), ${omitidos} ya existían — ${fecha}`,
     );
   }
 
@@ -199,38 +199,23 @@ export async function aplicarTodasLasRutasFijas(
 ): Promise<{ repartidor: string; generados: number; omitidos: number }[]> {
   const [anio, mes, dia] = fecha.split('-').map(Number);
   const diaSemana = new Date(anio!, mes! - 1, dia!).getDay();
+
+  console.log(`[Cron] ${fecha} (día ${diaSemana})`);
+
+  // 1. Nuevo sistema: listas con nombre y días propios, asignadas a un repartidor
+  const resultadoNuevo = await aplicarNuevoSistema(fecha, diaSemana);
+
+  // 2. Viejo sistema (rutas_fijas por categoría A-E) para repartidores no cubiertos por el nuevo
   const categoria = categoriaDel(diaSemana);
+  const excluirIds = new Set(resultadoNuevo.map((r) => r.repartidorId));
+  const resultadoViejo = categoria !== null
+    ? await aplicarSistemaViejo(fecha, categoria, excluirIds)
+    : [];
 
-  if (categoria === null) {
-    console.log(`[Cron] ${fecha} es domingo — sin asignaciones automáticas.`);
-    return [];
-  }
-
-  console.log(`[Cron] ${fecha} (día ${diaSemana}) → categoría ${categoria}`);
-
-  // 1. Nuevo sistema: listas_categoria + asignacion_lista_cat
-  const resultadoNuevo = await aplicarNuevoSistema(fecha, categoria);
-
-  // 2. Viejo sistema para repartidores no cubiertos por el nuevo
-  const yaAsignadosIds = new Set(
-    resultadoNuevo.map((r) => r.repartidor), // usamos nombres, no IDs — necesitamos los IDs
-  );
-
-  // Obtener IDs de los repartidores que ya fueron asignados por el nuevo sistema
-  const { rows: repIdsNuevo } = resultadoNuevo.length > 0
-    ? await pool.query<{ id: string }>(
-        `SELECT a.repartidor_id AS id
-         FROM asignacion_lista_cat a
-         JOIN repartidores r ON r.id = a.repartidor_id AND r.activo = true
-         WHERE a.categoria = $1`,
-        [categoria],
-      )
-    : { rows: [] };
-  const excluirIds = new Set(repIdsNuevo.map((r) => r.id));
-
-  const resultadoViejo = await aplicarSistemaViejo(fecha, categoria, excluirIds);
-
-  return [...resultadoNuevo, ...resultadoViejo];
+  return [
+    ...resultadoNuevo.map(({ repartidor, generados, omitidos }) => ({ repartidor, generados, omitidos })),
+    ...resultadoViejo,
+  ];
 }
 
 // ─── Scheduler principal ──────────────────────────────────────────────────────

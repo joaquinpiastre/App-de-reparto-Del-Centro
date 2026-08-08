@@ -17,6 +17,7 @@ import { pagosRouter } from './routes/pagos.js';
 import { seedRutasRouter } from './routes/seedRutas.js';
 import { listasCategoriasRouter } from './routes/listasCategorias.js';
 import { asignacionListaCatRouter } from './routes/asignacionListaCat.js';
+import { listasRouter } from './routes/listas.js';
 import { iniciarSchedulerRutasFijas } from './cron/rutasFijasScheduler.js';
 import { iniciarSchedulerReporteMensual } from './cron/reporteMensualScheduler.js';
 import { iniciarServidorGT06 } from './gps-tracker/gt06.js';
@@ -47,6 +48,7 @@ app.use(pagosRouter);
 app.use(seedRutasRouter);
 app.use(listasCategoriasRouter);
 app.use(asignacionListaCatRouter);
+app.use(listasRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const message = err instanceof Error ? err.message : String(err);

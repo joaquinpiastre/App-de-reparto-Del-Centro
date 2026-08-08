@@ -36,6 +36,10 @@ export async function actualizarEstadoPedidoCalle(
   });
 }
 
+export async function eliminarPedidoCalle(id: string): Promise<void> {
+  await apiRequest(`/pedidos-calle/${id}`, { method: 'DELETE' });
+}
+
 export async function actualizarNotaPedidoCalle(id: string, notas: string): Promise<void> {
   usePedidosCalleStore.getState().actualizarNota(id, notas || undefined);
   if (!API_ENABLED) return;
